@@ -17,21 +17,22 @@ Flat Python scripts, each reads JSON and writes JSON. No framework, no shared st
 
 ```
 input/
-  meeting.mp4
+  meeting.mp4           [x] downloaded
 
 pipeline/
-  01_transcribe.py      → output/transcript.json
+  01_transcribe.py      → output/transcript.json   [x] scaffold + audio extraction
   02_audio_features.py  → output/audio_features.json
   03_emotion_voice.py   → output/voice_emotion.json
   04_emotion_face.py    → output/face_emotion.json
   05_llm_analysis.py    → output/analysis.json
   06_report.py          → output/report.html
 
-output/
+output/                                       [x] created, gitignored
 models/
-run.py
-requirements.txt
-.env
+run.py                                        [x] orchestrator working
+requirements.txt                              [x] all deps installed in venv
+.env                                          [x] .env.example created
+tests/                                        [x] pytest suite (7 tests)
 ```
 
 Force re-run from a specific step by deleting its output file:
@@ -45,10 +46,10 @@ rm output/analysis.json && python run.py  # re-runs steps 5 and 6 only
 
 ### Step 1 — Transcription + Diarization (`01_transcribe.py`)
 
-- Extract audio from `input/meeting.mp4` via ffmpeg
-- Run WhisperX (`large-v2`) for word-level transcription
-- Run pyannote `speaker-diarization-3.1` for speaker labels
-- Merge word timestamps with speaker labels
+- [x] Extract audio from `input/meeting.mp4` via ffmpeg
+- [ ] Run WhisperX (`large-v2`) for word-level transcription
+- [ ] Run pyannote `speaker-diarization-3.1` for speaker labels
+- [ ] Merge word timestamps with speaker labels
 
 **Output schema:**
 ```json

@@ -9,7 +9,7 @@ Place the meeting video here before running the pipeline.
 Download the demo video:
 
 ```bash
-yt-dlp https://www.youtube.com/watch?v=2zy6KTIllY8 -o input/meeting.mp4
+yt-dlp https://youtu.be/N0SF2nZS-S8 -o input/meeting.mp4
 ```
 
 Or place any `.mp4` recording here with that filename. The pipeline reads only `input/meeting.mp4` — no other filename is supported.

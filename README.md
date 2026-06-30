@@ -20,7 +20,7 @@ pip install -r requirements.txt
 cp .env.example .env   # then fill in ANTHROPIC_API_KEY and HF_TOKEN
 
 # 4. Download demo video
-yt-dlp https://www.youtube.com/watch?v=2zy6KTIllY8 -o input/meeting.mp4
+yt-dlp https://youtu.be/N0SF2nZS-S8 -o input/meeting.mp4
 
 # 5. Run the pipeline
 python run.py
@@ -34,6 +34,8 @@ python run.py
 ## Pipeline
 
 Six sequential steps. Each reads JSON from the previous step and writes JSON for the next. `run.py` orchestrates them and skips steps whose output already exists.
+
+Status: **Step 1 partially implemented** — audio extraction via ffmpeg is done, WhisperX/pyannote transcription pending.
 
 ```
 input/meeting.mp4
@@ -76,7 +78,15 @@ input/       Place meeting.mp4 here before running
 pipeline/    The six analysis scripts
 output/      Generated JSON files and final report.html
 models/      Cached model weights (audeering wav2vec2, auto-downloaded on first run)
+tests/       Pytest test suite (7 tests covering audio extraction)
 docs/        Design specs and project documentation
+```
+
+## Testing
+
+```bash
+source venv/bin/activate
+python -m pytest tests/ -v
 ```
 
 ---

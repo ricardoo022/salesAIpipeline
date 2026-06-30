@@ -22,6 +22,29 @@ input/meeting.mp4
 
 `run.py` at root orchestrates all six steps in sequence.
 
+## Project Structure
+
+```
+├── .claude/          Agent skills and configurations
+├── docs/             Design specs and implementation plans
+├── input/            Place meeting.mp4 here
+├── models/           Model weights cache (auto-downloaded)
+├── output/           Generated JSON files and report.html
+├── pipeline/         The six analysis scripts
+├── tests/            Pytest test suite
+├── run.py            Orchestrator
+└── requirements.txt  Python dependencies
+```
+
+## Testing
+
+```bash
+source venv/bin/activate
+python -m pytest tests/ -v
+```
+
+7 tests covering `pipeline/audio.py` (extract_audio with ffmpeg) and `pipeline/01_transcribe.py` error handling.
+
 ## Key Design Decisions
 
 **Voice emotion model**: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim` — outputs valence, arousal, dominance (continuous 0–1) per segment. Better than training on RAVDESS for naturalistic speech.
@@ -43,7 +66,10 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 # Download demo video
-yt-dlp https://www.youtube.com/watch?v=2zy6KTIllY8 -o input/meeting.mp4
+yt-dlp https://youtu.be/N0SF2nZS-S8 -o input/meeting.mp4
+
+# Run tests
+python -m pytest tests/ -v
 
 # Run full pipeline
 python run.py

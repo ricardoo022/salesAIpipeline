@@ -5,9 +5,9 @@ The six analysis scripts that form the pipeline. Each is a standalone Python scr
 ## Scripts
 
 ### `01_transcribe.py` → `output/transcript.json`
-Extracts audio from `input/meeting.mp4` via ffmpeg, runs WhisperX (`large-v2`) for word-level transcription, then pyannote `speaker-diarization-3.1` for speaker labels. Merges word timestamps with speaker assignments.
+Extracts audio from `input/meeting.mp4` via ffmpeg (16kHz mono WAV). Planned: WhisperX (`large-v2`) for word-level transcription, then pyannote `speaker-diarization-3.1` for speaker labels. Currently outputs an empty `transcript.json` array as placeholder.
 
-Requires `HF_TOKEN` in `.env` and accepted model terms on HuggingFace.
+Audio extraction uses the shared `pipeline/audio.py` utility. Requires `HF_TOKEN` in `.env` and accepted model terms on HuggingFace for the pyannote steps.
 
 Output schema: `[{speaker, start, end, text, words: [{word, start, end}]}]`
 
