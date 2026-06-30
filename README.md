@@ -24,34 +24,18 @@ yt-dlp https://youtu.be/N0SF2nZS-S8 -o input/meeting.mp4
 
 # 5. Run the pipeline
 python run.py
-
-# 6. Open the report
-# output/report.html — double-click to open in any browser
 ```
 
 ---
 
 ## Pipeline
 
-Six sequential steps. Each reads JSON from the previous step and writes JSON for the next. `run.py` orchestrates them and skips steps whose output already exists.
-
-Status: **Step 1 complete** — audio extraction, WhisperX word-level transcription, and pyannote speaker diarization all done. `transcript.json` segments carry a `speaker` field.
+Sequential steps. Each reads JSON from the previous step and writes JSON for the next. `run.py` orchestrates them and skips steps whose output already exists.
 
 ```
 input/meeting.mp4
   │
-  ├─ 01_transcribe.py      → output/transcript.json       WhisperX + pyannote diarization
-  ├─ 02_audio_features.py  → output/audio_features.json   librosa: pitch, energy, speech rate, pauses
-  ├─ 03_emotion_voice.py   → output/voice_emotion.json    audeering wav2vec2: valence/arousal/dominance
-  ├─ 04_emotion_face.py    → output/face_emotion.json     DeepFace, one frame every 10s
-  ├─ 05_llm_analysis.py    → output/analysis.json         Claude API (run twice: text-only + multimodal)
-  └─ 06_report.py          → output/report.html           Self-contained HTML + Chart.js
-```
-
-To re-run from a specific step, delete its output file:
-
-```bash
-rm output/analysis.json && python run.py   # re-runs steps 5 and 6
+  └─ 01_transcribe.py  → output/transcript.json   WhisperX + pyannote diarization
 ```
 
 ---
@@ -61,8 +45,8 @@ rm output/analysis.json && python run.py   # re-runs steps 5 and 6
 Create a `.env` file at the project root:
 
 ```
-ANTHROPIC_API_KEY=...    # Claude API — used by step 5
-HF_TOKEN=...             # HuggingFace — used by step 1 (pyannote diarization)
+ANTHROPIC_API_KEY=...    # Claude API
+HF_TOKEN=...             # HuggingFace — required for pyannote diarization
 ```
 
 For `HF_TOKEN` you must also accept model terms at:
@@ -75,10 +59,9 @@ For `HF_TOKEN` you must also accept model terms at:
 
 ```
 input/       Place meeting.mp4 here before running
-pipeline/    The six analysis scripts
-output/      Generated JSON files and final report.html
-models/      Cached model weights (audeering wav2vec2, auto-downloaded on first run)
-tests/       Pytest test suite (20 tests covering audio extraction, WhisperX transcription, pyannote diarization, and speaker label merge)
+pipeline/    Analysis scripts and shared modules
+output/      Generated JSON files
+tests/       Pytest test suite
 docs/        Design specs and project documentation
 ```
 
@@ -95,21 +78,7 @@ python -m pytest tests/ -v
 
 | Tool | Purpose |
 |------|---------|
-| WhisperX | Word-level transcription + speaker diarization |
-| pyannote.audio | Speaker segmentation |
-| librosa | Audio feature extraction |
-| audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim | Voice emotion (valence/arousal/dominance) |
-| DeepFace | Facial emotion detection |
-| Anthropic Claude API (`claude-sonnet-4-6`) | LLM analysis — runs twice per meeting |
-| Chart.js (CDN) | Engagement timeline in the HTML report |
+| WhisperX | Word-level transcription + forced alignment |
+| pyannote.audio | Speaker diarization |
 | python-dotenv | `.env` loading |
 | yt-dlp | Demo video download |
-
----
-
-## Notes
-
-- Runs entirely on CPU (no GPU required). Steps 1 and 3 are slow on long videos.
-- The report is fully self-contained — no server needed, just open `output/report.html` in a browser.
-- Step 5 retries once after 10 seconds on rate limit errors.
-- Step 4 silently skips frames where no face is detected.
