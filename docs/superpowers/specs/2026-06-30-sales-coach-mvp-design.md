@@ -20,7 +20,7 @@ input/
   meeting.mp4           [x] downloaded
 
 pipeline/
-  01_transcribe.py      → output/transcript.json   [x] scaffold + audio extraction
+  01_transcribe.py      → output/transcript.json   [x] complete (WhisperX + pyannote + speaker merge)
   02_audio_features.py  → output/audio_features.json
   03_emotion_voice.py   → output/voice_emotion.json
   04_emotion_face.py    → output/face_emotion.json
@@ -32,7 +32,7 @@ models/
 run.py                                        [x] orchestrator working
 requirements.txt                              [x] all deps installed in venv
 .env                                          [x] .env.example created
-tests/                                        [x] pytest suite (7 tests)
+tests/                                        [x] pytest suite (20 tests)
 ```
 
 Force re-run from a specific step by deleting its output file:
@@ -47,9 +47,9 @@ rm output/analysis.json && python run.py  # re-runs steps 5 and 6 only
 ### Step 1 — Transcription + Diarization (`01_transcribe.py`)
 
 - [x] Extract audio from `input/meeting.mp4` via ffmpeg
-- [ ] Run WhisperX (`large-v2`) for word-level transcription
-- [ ] Run pyannote `speaker-diarization-3.1` for speaker labels
-- [ ] Merge word timestamps with speaker labels
+- [x] Run WhisperX (`large-v2`) for word-level transcription
+- [x] Run pyannote `speaker-diarization-3.1` for speaker labels
+- [x] Merge word timestamps with speaker labels
 
 **Output schema:**
 ```json
