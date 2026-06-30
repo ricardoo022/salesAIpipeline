@@ -12,7 +12,7 @@ Six sequential steps, each a standalone Python script. Output of each step is a 
 
 ```
 input/meeting.mp4
-  → pipeline/01_transcribe.py      → output/transcript.json      (WhisperX large-v2 ✓ | pyannote diarization TODO)
+  → pipeline/01_transcribe.py      → output/transcript.json      (WhisperX large-v2 ✓ | pyannote diarization ✓ | merge speaker labels ✓)
   → pipeline/02_audio_features.py  → output/audio_features.json  (librosa: pitch, energy, speech rate, pauses)
   → pipeline/03_emotion_voice.py   → output/voice_emotion.json   (audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim)
   → pipeline/04_emotion_face.py    → output/face_emotion.json    (DeepFace, sampled every 10s)
@@ -54,7 +54,7 @@ python -m pytest tests/test_transcribe.py -v    # single file
 python -m pytest tests/ -v -k "test_loads"      # single test by name
 ```
 
-11 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests), `pipeline/01_transcribe.py` subprocess guard (1 test).
+20 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN).
 
 ## Key Design Decisions
 

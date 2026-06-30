@@ -11,8 +11,11 @@ import json
 import os
 import sys
 
+from dotenv import load_dotenv
+
 from audio import extract_audio
-from transcribe import transcribe_audio
+from diarize import diarize_audio
+from transcribe import transcribe_audio, merge_speaker_labels
 
 INPUT_VIDEO = "input/meeting.mp4"
 OUTPUT_FILE = "output/transcript.json"
@@ -21,6 +24,12 @@ OUTPUT_FILE = "output/transcript.json"
 def main():
     if not os.path.exists(INPUT_VIDEO):
         print(f"ERROR: {INPUT_VIDEO} not found.")
+        sys.exit(1)
+
+    load_dotenv()
+    hf_token = os.getenv("HF_TOKEN", "")
+    if not hf_token:
+        print("ERROR: HF_TOKEN is required for diarization. Set it in .env")
         sys.exit(1)
 
     os.makedirs("output", exist_ok=True)
@@ -33,11 +42,11 @@ def main():
     segments = transcribe_audio(audio_path)
     print(f"  Transcribed {len(segments)} segments")
 
-    # TODO: pyannote speaker diarization
-    # TODO: Merge words with speaker labels
+    print("→ Running pyannote speaker diarization...")
+    diarization = diarize_audio(audio_path, hf_token=hf_token)
+    print(f"  Found {len(set(d['speaker'] for d in diarization))} speakers")
 
-    # Note: segments lack a `speaker` field until pyannote diarization is wired (next TODO)
-    transcript = segments
+    transcript = merge_speaker_labels(segments, diarization)
     with open(OUTPUT_FILE, "w") as f:
         json.dump(transcript, f, indent=2)
 

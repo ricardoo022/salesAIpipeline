@@ -1,6 +1,6 @@
 # Audio Extraction & Setup Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Set up the development environment, download the demo video, and implement audio extraction as part of pipeline step 1 (`01_transcribe.py`).
 
@@ -15,7 +15,7 @@
 **Files:**
 - Create: `venv/` — Python virtual environment (not committed)
 
-- [ ] **Step 1: Create Python virtual environment**
+- [x] **Step 1: Create Python virtual environment**
 
 ```bash
 python3 -m venv venv
@@ -23,7 +23,7 @@ python3 -m venv venv
 
 Verify: `ls -ld venv/` shows the directory exists.
 
-- [ ] **Step 2: Install Python dependencies in the venv**
+- [x] **Step 2: Install Python dependencies in the venv**
 
 ```bash
 source venv/bin/activate && pip install -r requirements.txt
@@ -41,7 +41,7 @@ Verify: `source venv/bin/activate && which pip` points inside `venv/`.
 - Modify: `requirements.txt` (already has yt-dlp)
 - Input: `input/meeting.mp4` (to be downloaded)
 
-- [ ] **Step 1: Install ffmpeg system dependency**
+- [x] **Step 1: Install ffmpeg system dependency**
 
 ```bash
 sudo apt-get update && sudo apt-get install -y ffmpeg
@@ -49,7 +49,7 @@ sudo apt-get update && sudo apt-get install -y ffmpeg
 
 Verify: `ffmpeg -version` should print version info.
 
-- [ ] **Step 2: Install yt-dlp in the venv**
+- [x] **Step 2: Install yt-dlp in the venv**
 
 ```bash
 source venv/bin/activate && pip install yt-dlp
@@ -57,7 +57,7 @@ source venv/bin/activate && pip install yt-dlp
 
 Verify: `source venv/bin/activate && yt-dlp --version` should print version info.
 
-- [ ] **Step 3: Download the demo video (with yt-dlp from venv)**
+- [x] **Step 3: Download the demo video (with yt-dlp from venv)**
 
 ```bash
 source venv/bin/activate && yt-dlp https://www.youtube.com/watch?v=2zy6KTIllY8 -o input/meeting.mp4
@@ -73,7 +73,7 @@ Verify: `ls -lh input/meeting.mp4` shows the file exists and has reasonable size
 - Create: `pipeline/audio.py` — shared audio utilities used by multiple pipeline steps
 - Modify: `pipeline/__init__.py` — ensure package exports
 
-- [ ] **Step 1: Create `pipeline/audio.py` with ffmpeg extraction function**
+- [x] **Step 1: Create `pipeline/audio.py` with ffmpeg extraction function**
 
 ```python
 import subprocess
@@ -107,7 +107,7 @@ def extract_audio(video_path: str, output_path: str = AUDIO_TEMP_FILE) -> str:
     return output_path
 ```
 
-- [ ] **Step 2: Create a quick smoke test**
+- [x] **Step 2: Create a quick smoke test**
 
 ```python
 # scripts/test_audio_extraction.py
@@ -130,7 +130,7 @@ Expected: Writes `output/audio_temp.wav` without error.
 - Create: `pipeline/01_transcribe.py` — first pipeline script
 - Create: `output/transcript.json` — output placeholder (actual transcription logic TBD)
 
-- [ ] **Step 1: Create `pipeline/01_transcribe.py` with audio extraction + transcription scaffolding**
+- [x] **Step 1: Create `pipeline/01_transcribe.py` with audio extraction + transcription scaffolding**
 
 ```python
 #!/usr/bin/env python3
@@ -180,12 +180,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Test the script runs without errors**
+- [x] **Step 2: Test the script runs without errors**
 
 Run: `python pipeline/01_transcribe.py`
 Expected: Writes `output/audio_temp.wav` and `output/transcript.json` (empty array for now).
 
-- [ ] **Step 3: Run `run.py` to verify orchestration works**
+- [x] **Step 3: Run `run.py` to verify orchestration works**
 
 Run: `python run.py`
 Expected: Step 1 runs (output/transcript.json doesn't exist yet), completes successfully.
@@ -198,14 +198,14 @@ Expected: Step 1 runs (output/transcript.json doesn't exist yet), completes succ
 - Delete: `scripts/test_audio_extraction.py` (if created) — no longer needed
 - Verify: `output/audio_temp.wav` and `output/transcript.json` exist
 
-- [ ] **Step 1: Remove test script**
+- [x] **Step 1: Remove test script**
 
 ```bash
 rm -f scripts/test_audio_extraction.py
 rmdir scripts 2>/dev/null; true
 ```
 
-- [ ] **Step 2: Verify final state**
+- [x] **Step 2: Verify final state**
 
 ```bash
 ls -lh input/meeting.mp4 output/audio_temp.wav output/transcript.json
