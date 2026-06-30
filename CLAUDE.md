@@ -27,9 +27,25 @@ input/meeting.mp4
 The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they handle file paths, `sys.exit`, and print progress. Shared logic lives in importable modules alongside them:
 
 - `pipeline/audio.py` — `extract_audio()` — ffmpeg wrapper
-- `pipeline/transcribe.py` — `transcribe_audio()` — WhisperX load + align
+- `pipeline/transcribe.py` — `transcribe_audio()`, `merge_speaker_labels()` — WhisperX load + align; speaker label assignment by max time overlap
+- `pipeline/diarize.py` — `diarize_audio()` — pyannote speaker-diarization-3.1 wrapper
 
-Tests import the modules directly with mocks; they never call the numbered scripts (except the one subprocess test for the missing-video guard). New logic for each step should follow this pattern.
+Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
+
+### Import path duality
+
+Scripts use bare imports (`from audio import extract_audio`) because Python adds the script's own directory to `sys.path` when run directly. Tests use package imports (`from pipeline.audio import extract_audio`) because pytest runs from the project root and `pipeline/__init__.py` makes it a package. Both work; don't add `sys.path` manipulation to either.
+
+### pyannote lazy import
+
+`pipeline/diarize.py` does `from pyannote.audio import Pipeline` **inside** `diarize_audio()`, not at module level. This is intentional: pyannote imports torch at module load time and crashes in CPU-only environments that lack CUDA libs. The deferred import lets the CLI scripts load cleanly and fail early on missing video/token before touching pyannote.
+
+Tests stub pyannote by injecting into `sys.modules` before the module is first imported:
+```python
+_mock_pyannote = MagicMock()
+sys.modules.setdefault("pyannote", _mock_pyannote)
+sys.modules.setdefault("pyannote.audio", _mock_pyannote)
+```
 
 ## Project Structure
 
@@ -39,7 +55,7 @@ Tests import the modules directly with mocks; they never call the numbered scrip
 ├── input/            Place meeting.mp4 here
 ├── models/           Model weights cache (auto-downloaded)
 ├── output/           Generated JSON files and report.html
-├── pipeline/         The six analysis scripts
+├── pipeline/         The six analysis scripts + shared modules
 ├── tests/            Pytest test suite
 ├── run.py            Orchestrator
 └── requirements.txt  Python dependencies
@@ -106,8 +122,8 @@ Store in `.env` at the project root — every script that needs a key loads it v
 
 ```
 ANTHROPIC_API_KEY=...       # Claude API key for step 5
-HF_TOKEN=...                # HuggingFace token — required for pyannote diarization (step 1, TODO)
-                            # Audio extraction and WhisperX work without it.
+HF_TOKEN=...                # HuggingFace token — required for pyannote diarization (step 1)
+                            # Step 1 exits early with a clear error if this is missing.
                             # Must also accept model terms at:
                             # huggingface.co/pyannote/speaker-diarization-3.1
                             # huggingface.co/pyannote/segmentation-3.0
@@ -117,7 +133,8 @@ HF_TOKEN=...                # HuggingFace token — required for pyannote diariz
 
 | Tool | Purpose |
 |------|---------|
-| WhisperX | Transcription + speaker diarization (who said what, when) |
+| WhisperX | Word-level transcription + forced alignment |
+| pyannote.audio | Speaker diarization (who said what, when) |
 | librosa | Audio feature extraction (pitch, energy, speech rate, pauses, ZCR) |
 | transformers (audeering model) | Voice emotion: valence / arousal / dominance per segment |
 | DeepFace | Facial emotion per frame (sampled every 10s) |
@@ -126,7 +143,7 @@ HF_TOKEN=...                # HuggingFace token — required for pyannote diariz
 
 ## Output JSON Schemas
 
-**transcript.json**: Array of `{speaker, start, end, text, words[]}` — word-level timestamps from WhisperX. `speaker` field is absent until pyannote diarization is implemented.
+**transcript.json**: Array of `{speaker, start, end, text, words[]}` — word-level timestamps from WhisperX, speaker label from pyannote via `merge_speaker_labels()`. Unmatched segments get `speaker: "UNKNOWN"`.
 
 **audio_features.json**: Array of `{speaker, start, end, pitch_mean, pitch_std, energy_mean, speech_rate, pause_ratio, zcr}` — one entry per diarized segment.
 
