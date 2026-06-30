@@ -6,12 +6,9 @@ AUDIO_TEMP_FILE = "output/audio_temp.wav"
 
 
 def extract_audio(video_path: str, output_path: str = None) -> str:
+    """Extract audio from video file as 16kHz mono WAV using ffmpeg."""
     if output_path is None:
         output_path = AUDIO_TEMP_FILE
-    """Extract audio from video file as 16kHz mono WAV using ffmpeg.
-
-    Returns the path to the extracted audio file.
-    """
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     cmd = [
