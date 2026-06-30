@@ -12,7 +12,7 @@ Six sequential steps, each a standalone Python script. Output of each step is a 
 
 ```
 input/meeting.mp4
-  → pipeline/01_transcribe.py      → output/transcript.json      (WhisperX + pyannote diarization)
+  → pipeline/01_transcribe.py      → output/transcript.json      (WhisperX large-v2 ✓ | pyannote diarization TODO)
   → pipeline/02_audio_features.py  → output/audio_features.json  (librosa: pitch, energy, speech rate, pauses)
   → pipeline/03_emotion_voice.py   → output/voice_emotion.json   (audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim)
   → pipeline/04_emotion_face.py    → output/face_emotion.json    (DeepFace, sampled every 10s)
@@ -20,7 +20,16 @@ input/meeting.mp4
   → pipeline/06_report.py          → output/report.html           (pure HTML + Chart.js via CDN)
 ```
 
-`run.py` at root orchestrates all six steps in sequence.
+`run.py` at root orchestrates all six steps in sequence, skipping any step whose output file already exists.
+
+### Module/script split
+
+The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they handle file paths, `sys.exit`, and print progress. Shared logic lives in importable modules alongside them:
+
+- `pipeline/audio.py` — `extract_audio()` — ffmpeg wrapper
+- `pipeline/transcribe.py` — `transcribe_audio()` — WhisperX load + align
+
+Tests import the modules directly with mocks; they never call the numbered scripts (except the one subprocess test for the missing-video guard). New logic for each step should follow this pattern.
 
 ## Project Structure
 
@@ -40,10 +49,12 @@ input/meeting.mp4
 
 ```bash
 source venv/bin/activate
-python -m pytest tests/ -v
+python -m pytest tests/ -v                      # all tests
+python -m pytest tests/test_transcribe.py -v    # single file
+python -m pytest tests/ -v -k "test_loads"      # single test by name
 ```
 
-7 tests covering `pipeline/audio.py` (extract_audio with ffmpeg) and `pipeline/01_transcribe.py` error handling.
+11 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests), `pipeline/01_transcribe.py` subprocess guard (1 test).
 
 ## Key Design Decisions
 
@@ -95,8 +106,9 @@ Store in `.env` at the project root — every script that needs a key loads it v
 
 ```
 ANTHROPIC_API_KEY=...       # Claude API key for step 5
-HF_TOKEN=...                # HuggingFace token — required for pyannote diarization models
-                            # Must also accept terms at:
+HF_TOKEN=...                # HuggingFace token — required for pyannote diarization (step 1, TODO)
+                            # Audio extraction and WhisperX work without it.
+                            # Must also accept model terms at:
                             # huggingface.co/pyannote/speaker-diarization-3.1
                             # huggingface.co/pyannote/segmentation-3.0
 ```
@@ -114,7 +126,7 @@ HF_TOKEN=...                # HuggingFace token — required for pyannote diariz
 
 ## Output JSON Schemas
 
-**transcript.json**: Array of `{speaker, start, end, text, words[]}` — word-level timestamps from WhisperX.
+**transcript.json**: Array of `{speaker, start, end, text, words[]}` — word-level timestamps from WhisperX. `speaker` field is absent until pyannote diarization is implemented.
 
 **audio_features.json**: Array of `{speaker, start, end, pitch_mean, pitch_std, energy_mean, speech_rate, pause_ratio, zcr}` — one entry per diarized segment.
 
