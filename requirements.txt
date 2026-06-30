@@ -1,0 +1,24 @@
+# Transcription + diarization
+whisperx>=3.1.0
+pyannote.audio>=3.1.0
+
+# Audio feature extraction
+librosa>=0.10.0
+soundfile>=0.12.0
+
+# Voice emotion model
+transformers>=4.40.0
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Facial emotion
+deepface>=0.0.90
+opencv-python>=4.8.0
+
+# Claude API
+anthropic>=0.40.0
+
+# Utilities
+python-dotenv>=1.0.0
+yt-dlp>=2024.1.0
+numpy>=1.24.0
