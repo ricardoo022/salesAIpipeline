@@ -35,7 +35,7 @@ python run.py
 
 Six sequential steps. Each reads JSON from the previous step and writes JSON for the next. `run.py` orchestrates them and skips steps whose output already exists.
 
-Status: **Step 1 partially implemented** — audio extraction and WhisperX word-level transcription done; pyannote speaker diarization pending (segments lack `speaker` field until then).
+Status: **Step 1 complete** — audio extraction, WhisperX word-level transcription, and pyannote speaker diarization all done. `transcript.json` segments carry a `speaker` field.
 
 ```
 input/meeting.mp4
@@ -78,7 +78,7 @@ input/       Place meeting.mp4 here before running
 pipeline/    The six analysis scripts
 output/      Generated JSON files and final report.html
 models/      Cached model weights (audeering wav2vec2, auto-downloaded on first run)
-tests/       Pytest test suite (11 tests covering audio extraction and WhisperX transcription)
+tests/       Pytest test suite (20 tests covering audio extraction, WhisperX transcription, pyannote diarization, and speaker label merge)
 docs/        Design specs and project documentation
 ```
 
