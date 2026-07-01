@@ -1,10 +1,11 @@
 """WhisperX word-level transcription for step 1."""
 import os
+import torch
 import whisperx
 
 WHISPER_MODEL = "large-v2"
-DEVICE = "cpu"
-COMPUTE_TYPE = "int8"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+COMPUTE_TYPE = "float16" if DEVICE == "cuda" else "int8"
 
 
 def transcribe_audio(audio_path: str) -> list[dict]:

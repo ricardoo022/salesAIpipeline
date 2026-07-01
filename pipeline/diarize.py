@@ -1,5 +1,6 @@
 """Pyannote speaker diarization for step 1."""
 import os
+import torch
 
 DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 
@@ -21,6 +22,8 @@ def diarize_audio(audio_path: str, hf_token: str) -> list[dict]:
     from pyannote.audio import Pipeline
 
     pipeline = Pipeline.from_pretrained(DIARIZATION_MODEL, token=hf_token)
+    if torch.cuda.is_available():
+        pipeline.to(torch.device("cuda"))
     diarization = pipeline(audio_path)
 
     return [
