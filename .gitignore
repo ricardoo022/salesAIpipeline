@@ -3,6 +3,4 @@ __pycache__/
 *.py[cod]
 *$py.class
 .env
-output/
-input/meeting.mp4
 *.wav
