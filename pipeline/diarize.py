@@ -28,5 +28,5 @@ def diarize_audio(audio_path: str, hf_token: str) -> list[dict]:
 
     return [
         {"speaker": speaker, "start": round(turn.start, 3), "end": round(turn.end, 3)}
-        for turn, _, speaker in diarization.itertracks(yield_label=True)
+        for turn, _, speaker in diarization.speaker_diarization.itertracks(yield_label=True)
     ]

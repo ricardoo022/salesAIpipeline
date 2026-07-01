@@ -30,7 +30,7 @@ class TestDiarizeAudio:
         from pipeline.diarize import diarize_audio, DIARIZATION_MODEL
         audio = tmp_path / "test.wav"
         audio.touch()
-        _mock_pyannote.Pipeline.from_pretrained.return_value.return_value.itertracks.return_value = []
+        _mock_pyannote.Pipeline.from_pretrained.return_value.return_value.speaker_diarization.itertracks.return_value = []
         diarize_audio(str(audio), hf_token="my-token")
         _mock_pyannote.Pipeline.from_pretrained.assert_called_once_with(
             DIARIZATION_MODEL, token="my-token"
@@ -44,7 +44,7 @@ class TestDiarizeAudio:
         turn1.start, turn1.end = 0.0, 5.123
         turn2.start, turn2.end = 5.5, 10.0
         mock_diarization = MagicMock()
-        mock_diarization.itertracks.return_value = [
+        mock_diarization.speaker_diarization.itertracks.return_value = [
             (turn1, None, "SPEAKER_00"),
             (turn2, None, "SPEAKER_01"),
         ]
