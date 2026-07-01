@@ -13,7 +13,7 @@ Six sequential steps, each a standalone Python script. Output of each step is a 
 ```
 input/meeting.mp4
   → pipeline/01_transcribe.py      → output/transcript.json      (WhisperX large-v2 ✓ | pyannote diarization ✓ | merge speaker labels ✓)
-  → pipeline/02_audio_features.py  → output/audio_features.json  (librosa: pitch, energy, speech rate, pauses)
+  → pipeline/02_audio_features.py  → output/audio_features.json  (librosa: pitch mean/std, energy mean, speech rate, pause ratio, ZCR)
   → pipeline/03_emotion_voice.py   → output/voice_emotion.json   (audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim)
   → pipeline/04_emotion_face.py    → output/face_emotion.json    (DeepFace, sampled every 10s)
   → pipeline/05_llm_analysis.py    → output/analysis.json        (Claude API, run twice: transcript-only + multimodal)
@@ -29,6 +29,7 @@ The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they han
 - `pipeline/audio.py` — `extract_audio()` — ffmpeg wrapper
 - `pipeline/transcribe.py` — `transcribe_audio()`, `merge_speaker_labels()` — WhisperX load + align; speaker label assignment by max time overlap
 - `pipeline/diarize.py` — `diarize_audio()` — pyannote speaker-diarization-3.1 wrapper
+- `pipeline/features.py` — `extract_audio_features()` — librosa pitch, energy, speech rate, pause ratio, ZCR per segment
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
 
@@ -70,7 +71,7 @@ python -m pytest tests/test_transcribe.py -v    # single file
 python -m pytest tests/ -v -k "test_loads"      # single test by name
 ```
 
-20 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN).
+39 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio).
 
 ## Key Design Decisions
 
