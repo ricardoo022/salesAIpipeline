@@ -12,8 +12,6 @@ import json
 import os
 import sys
 
-from emotion_voice import extract_voice_emotion
-
 SEGMENTS_FILE = "output/audio_features.json"
 AUDIO_FILE = "output/audio_temp.wav"
 OUTPUT_FILE = "output/voice_emotion.json"
@@ -27,6 +25,8 @@ def main():
     if not os.path.exists(AUDIO_FILE):
         print(f"ERROR: {AUDIO_FILE} not found. Run step 1 first.")
         sys.exit(1)
+
+    from emotion_voice import extract_voice_emotion
 
     with open(SEGMENTS_FILE) as f:
         segments = json.load(f)

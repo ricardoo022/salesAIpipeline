@@ -1,0 +1,418 @@
+# Review package: 324d4359dbe1c937f273d271b6855c58f925ed36..HEAD
+
+## Commits
+19bd7d0 feat(step3): add CLI entry point for voice emotion extraction
+110f047 fix(step3): add CI guard to integration test, strengthen assertions
+4fee0be feat(step3): add voice emotion extraction module with audeering wav2vec2
+
+## Files changed
+ pipeline/03_emotion_voice.py   |  45 ++++++++++
+ pipeline/emotion_voice.py      | 107 ++++++++++++++++++++++
+ tests/test_03_emotion_voice.py |  28 ++++++
+ tests/test_emotion_voice.py    | 199 +++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 379 insertions(+)
+
+## Diff
+diff --git a/pipeline/03_emotion_voice.py b/pipeline/03_emotion_voice.py
+new file mode 100644
+index 0000000..1cc7f6c
+--- /dev/null
++++ b/pipeline/03_emotion_voice.py
+@@ -0,0 +1,45 @@
++#!/usr/bin/env python3
++"""Step 3: Extract voice emotion from transcript segments.
++
++Uses audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim to extract
++valence, arousal, and dominance per segment. Long segments (>15s) are
++split into chunks and results averaged.
++
++Output: output/voice_emotion.json
++"""
++
++import json
++import os
++import sys
++
++from emotion_voice import extract_voice_emotion
++
++SEGMENTS_FILE = "output/audio_features.json"
++AUDIO_FILE = "output/audio_temp.wav"
++OUTPUT_FILE = "output/voice_emotion.json"
++
++
++def main():
++    if not os.path.exists(SEGMENTS_FILE):
++        print(f"ERROR: {SEGMENTS_FILE} not found. Run step 2 first.")
++        sys.exit(1)
++
++    if not os.path.exists(AUDIO_FILE):
++        print(f"ERROR: {AUDIO_FILE} not found. Run step 1 first.")
++        sys.exit(1)
++
++    with open(SEGMENTS_FILE) as f:
++        segments = json.load(f)
++
++    print("→ Extracting voice emotion (valence, arousal, dominance) from audio segments...")
++    emotions = extract_voice_emotion(segments, AUDIO_FILE)
++
++    os.makedirs("output", exist_ok=True)
++    with open(OUTPUT_FILE, "w") as f:
++        json.dump(emotions, f, indent=2)
++
++    print(f"✓ Voice emotion saved to {OUTPUT_FILE} ({len(emotions)} segments)")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/pipeline/emotion_voice.py b/pipeline/emotion_voice.py
+new file mode 100644
+index 0000000..f76bfa3
+--- /dev/null
++++ b/pipeline/emotion_voice.py
+@@ -0,0 +1,107 @@
++"""Voice emotion extraction for step 3.
++
++Uses audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim to extract
++valence, arousal, and dominance from audio segments per the sales coach
++pipeline specification.
++"""
++
++import os
++import librosa
++import numpy as np
++import torch
++from transformers import Wav2Vec2ForSequenceClassification, Wav2Vec2FeatureExtractor
++
++try:
++    from pipeline.audio import AUDIO_SAMPLE_RATE
++except ImportError:
++    from audio import AUDIO_SAMPLE_RATE
++
++MODEL_NAME = "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim"
++MODEL_CACHE_DIR = "models"
++MAX_CHUNK_DURATION = 15
++
++
++def _load_model(cache_dir: str = MODEL_CACHE_DIR):
++    """Load the emotion model and feature extractor, cached in models/."""
++    os.makedirs(cache_dir, exist_ok=True)
++    feature_extractor = Wav2Vec2FeatureExtractor.from_pretrained(
++        MODEL_NAME, cache_dir=cache_dir
++    )
++    model = Wav2Vec2ForSequenceClassification.from_pretrained(
++        MODEL_NAME, cache_dir=cache_dir
++    )
++    model.eval()
++    return feature_extractor, model
++
++
++def _predict_chunk(audio_chunk: np.ndarray, feature_extractor, model) -> np.ndarray:
++    """Run emotion model on a single audio chunk, returning [valence, arousal, dominance]."""
++    inputs = feature_extractor(
++        audio_chunk, sampling_rate=AUDIO_SAMPLE_RATE, return_tensors="pt"
++    )
++    with torch.no_grad():
++        outputs = model(**inputs)
++    probs = torch.sigmoid(outputs.logits).numpy()[0]
++    return probs
++
++
++def extract_voice_emotion(
++    segments: list[dict],
++    audio_path: str,
++    model_path: str = None,
++) -> list[dict]:
++    """Extract voice emotion for each transcript segment.
++
++    For each segment, loads audio, runs the audeering wav2vec2 model,
++    and returns valence, arousal, dominance averaged over < =15s chunks.
++
++    Returns a new list preserving speaker/start/end with added emotion fields.
++    """
++    if not os.path.exists(audio_path):
++        raise FileNotFoundError(f"Audio file not found: {audio_path}")
++    if not segments:
++        raise ValueError("Segments list is empty")
++
++    y, sr = librosa.load(audio_path, sr=AUDIO_SAMPLE_RATE)
++    cache_dir = model_path or MODEL_CACHE_DIR
++    feature_extractor, model = _load_model(cache_dir)
++    max_chunk_samples = MAX_CHUNK_DURATION * AUDIO_SAMPLE_RATE
++
++    result = []
++    for seg in segments:
++        start_sample = int(seg["start"] * sr)
++        end_sample = int(seg["end"] * sr)
++        segment_audio = y[start_sample:end_sample]
++
++        if len(segment_audio) == 0:
++            result.append({
++                "speaker": seg["speaker"],
++                "start": seg["start"],
++                "end": seg["end"],
++                "valence": 0.0,
++                "arousal": 0.0,
++                "dominance": 0.0,
++            })
++            continue
++
++        # Split long segments into <=MAX_CHUNK_DURATION-second chunks
++        if len(segment_audio) > max_chunk_samples:
++            chunk_probs = []
++            for chunk_start in range(0, len(segment_audio), max_chunk_samples):
++                chunk_end = min(chunk_start + max_chunk_samples, len(segment_audio))
++                chunk = segment_audio[chunk_start:chunk_end]
++                chunk_probs.append(_predict_chunk(chunk, feature_extractor, model))
++            probs = np.mean(chunk_probs, axis=0)
++        else:
++            probs = _predict_chunk(segment_audio, feature_extractor, model)
++
++        result.append({
++            "speaker": seg["speaker"],
++            "start": seg["start"],
++            "end": seg["end"],
++            "valence": round(float(probs[0]), 4),
++            "arousal": round(float(probs[1]), 4),
++            "dominance": round(float(probs[2]), 4),
++        })
++
++    return result
+diff --git a/tests/test_03_emotion_voice.py b/tests/test_03_emotion_voice.py
+new file mode 100644
+index 0000000..c7179e5
+--- /dev/null
++++ b/tests/test_03_emotion_voice.py
+@@ -0,0 +1,28 @@
++import os
++import sys
++import subprocess
++
++PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(__file__), ".."))
++
++
++def test_exits_when_segments_input_missing(tmp_path):
++    result = subprocess.run(
++        [sys.executable, os.path.join(PROJECT_ROOT, "pipeline/03_emotion_voice.py")],
++        capture_output=True, text=True,
++        cwd=str(tmp_path),
++    )
++    assert result.returncode == 1
++    assert "audio_features.json" in result.stdout
++
++
++def test_exits_when_audio_missing(tmp_path):
++    (tmp_path / "output").mkdir()
++    with open(tmp_path / "output" / "audio_features.json", "w") as f:
++        f.write("[]")
++    result = subprocess.run(
++        [sys.executable, os.path.join(PROJECT_ROOT, "pipeline/03_emotion_voice.py")],
++        capture_output=True, text=True,
++        cwd=str(tmp_path),
++    )
++    assert result.returncode == 1
++    assert "audio_temp.wav" in result.stdout
+diff --git a/tests/test_emotion_voice.py b/tests/test_emotion_voice.py
+new file mode 100644
+index 0000000..b529d2d
+--- /dev/null
++++ b/tests/test_emotion_voice.py
+@@ -0,0 +1,199 @@
++import os
++import numpy as np
++import pytest
++import torch
++from unittest.mock import patch, MagicMock
++
++AUDIO_PATH = "output/audio_temp.wav"
++SAMPLE_RATE = 16000
++MAX_CHUNK_DURATION = 15
++
++
++def _make_segment(overrides=None):
++    seg = {
++        "speaker": "SPEAKER_00",
++        "start": 0.0,
++        "end": 2.0,
++        "text": "Hello world",
++        "words": [
++            {"word": "Hello", "start": 0.0, "end": 0.3},
++            {"word": "world", "start": 0.4, "end": 0.8},
++        ],
++    }
++    if overrides:
++        seg.update(overrides)
++    return seg
++
++
++class TestExtractVoiceEmotion:
++    def test_raises_when_audio_missing(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        transcript = [_make_segment()]
++        with pytest.raises(FileNotFoundError, match="not found"):
++            extract_voice_emotion(transcript, "nonexistent.wav")
++
++    def test_raises_when_segments_empty(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        audio = tmp_path / "test.wav"
++        audio.touch()
++        with pytest.raises(ValueError, match="empty"):
++            extract_voice_emotion([], str(audio))
++
++    def test_returns_valence_arousal_dominance(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        audio = tmp_path / "test.wav"
++        audio.touch()
++        transcript = [_make_segment()]
++        with patch("pipeline.emotion_voice._load_model") as mock_load:
++            mock_fe, mock_model = MagicMock(), MagicMock()
++            mock_load.return_value = (mock_fe, mock_model)
++            mock_logits = MagicMock()
++            mock_logits.logits = torch.tensor([[0.5, 0.3, 0.7]])
++            mock_model.return_value = mock_logits
++            with patch("pipeline.emotion_voice.librosa") as mock_lib:
++                mock_lib.load.return_value = (np.zeros(SAMPLE_RATE * 2, dtype=np.float32), SAMPLE_RATE)
++                result = extract_voice_emotion(transcript, str(audio))
++        assert len(result) == 1
++        assert result[0]["valence"] == pytest.approx(0.6225, abs=0.001)
++        assert result[0]["arousal"] == pytest.approx(0.5744, abs=0.001)
++        assert result[0]["dominance"] == pytest.approx(0.6682, abs=0.001)
++
++    def test_preserves_speaker_start_end(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        audio = tmp_path / "test.wav"
++        audio.touch()
++        transcript = [_make_segment({"speaker": "SPEAKER_01", "start": 5.0, "end": 7.5})]
++        with patch("pipeline.emotion_voice._load_model") as mock_load:
++            mock_fe, mock_model = MagicMock(), MagicMock()
++            mock_load.return_value = (mock_fe, mock_model)
++            mock_logits = MagicMock()
++            mock_logits.logits = torch.tensor([[0.5, 0.3, 0.7]])
++            mock_model.return_value = mock_logits
++            with patch("pipeline.emotion_voice.librosa") as mock_lib:
++                mock_lib.load.return_value = (np.zeros(SAMPLE_RATE * 10, dtype=np.float32), SAMPLE_RATE)
++                result = extract_voice_emotion(transcript, str(audio))
++        assert result[0]["speaker"] == "SPEAKER_01"
++        assert result[0]["start"] == 5.0
++        assert result[0]["end"] == 7.5
++
++    def test_empty_segment_returns_zero_emotion(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        audio = tmp_path / "test.wav"
++        audio.touch()
++        transcript = [_make_segment({"start": 0.0, "end": 0.0})]
++        with patch("pipeline.emotion_voice._load_model") as mock_load:
++            mock_fe, mock_model = MagicMock(), MagicMock()
++            mock_load.return_value = (mock_fe, mock_model)
++            with patch("pipeline.emotion_voice.librosa") as mock_lib:
++                mock_lib.load.return_value = (np.zeros(SAMPLE_RATE, dtype=np.float32), SAMPLE_RATE)
++                result = extract_voice_emotion(transcript, str(audio))
++        assert result[0]["valence"] == 0.0
++        assert result[0]["arousal"] == 0.0
++        assert result[0]["dominance"] == 0.0
++
++    def test_chunks_long_segments_and_averages(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        audio = tmp_path / "test.wav"
++        audio.touch()
++        transcript = [_make_segment({"start": 0.0, "end": 20.0})]
++        with patch("pipeline.emotion_voice._load_model") as mock_load:
++            mock_fe, mock_model = MagicMock(), MagicMock()
++            mock_load.return_value = (mock_fe, mock_model)
++            mock_logits = MagicMock()
++            mock_logits.logits = torch.tensor([[0.5, 0.3, 0.7]])
++            mock_model.return_value = mock_logits
++            with patch("pipeline.emotion_voice.librosa") as mock_lib:
++                mock_lib.load.return_value = (np.zeros(SAMPLE_RATE * 25, dtype=np.float32), SAMPLE_RATE)
++                result = extract_voice_emotion(transcript, str(audio))
++        assert result[0]["valence"] == pytest.approx(0.6225, abs=0.001)
++        assert result[0]["arousal"] == pytest.approx(0.5744, abs=0.001)
++        assert result[0]["dominance"] == pytest.approx(0.6682, abs=0.001)
++
++    def test_processes_multiple_segments(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        audio = tmp_path / "test.wav"
++        audio.touch()
++        transcript = [
++            _make_segment({"speaker": "SPEAKER_00", "start": 0.0, "end": 1.0}),
++            _make_segment({"speaker": "SPEAKER_01", "start": 1.0, "end": 2.0}),
++        ]
++        with patch("pipeline.emotion_voice._load_model") as mock_load:
++            mock_fe, mock_model = MagicMock(), MagicMock()
++            mock_load.return_value = (mock_fe, mock_model)
++            mock_logits = MagicMock()
++            mock_logits.logits = torch.tensor([[0.5, 0.3, 0.7]])
++            mock_model.return_value = mock_logits
++            with patch("pipeline.emotion_voice.librosa") as mock_lib:
++                mock_lib.load.return_value = (np.zeros(SAMPLE_RATE * 3, dtype=np.float32), SAMPLE_RATE)
++                result = extract_voice_emotion(transcript, str(audio))
++        assert len(result) == 2
++
++    def test_does_not_mutate_input_segments(self, tmp_path):
++        from pipeline.emotion_voice import extract_voice_emotion
++        audio = tmp_path / "test.wav"
++        audio.touch()
++        transcript = [_make_segment()]
++        original_keys = set(transcript[0].keys())
++        with patch("pipeline.emotion_voice._load_model") as mock_load:
++            mock_fe, mock_model = MagicMock(), MagicMock()
++            mock_load.return_value = (mock_fe, mock_model)
++            mock_logits = MagicMock()
++            mock_logits.logits = torch.tensor([[0.5, 0.3, 0.7]])
++            mock_model.return_value = mock_logits
++            with patch("pipeline.emotion_voice.librosa") as mock_lib:
++                mock_lib.load.return_value = (np.zeros(SAMPLE_RATE * 3, dtype=np.float32), SAMPLE_RATE)
++                extract_voice_emotion(transcript, str(audio))
++        assert set(transcript[0].keys()) == original_keys
++
++
++class TestExtractVoiceEmotionIntegration:
++    @pytest.mark.skipif(
++        not os.path.exists(
++            os.path.expanduser(
++                "~/.cache/huggingface/hub/models--audeering--wav2vec2-large-robust-12-ft-emotion-msp-dim"
++            )
++        ),
++        reason="audeering model not cached; run pipeline step 3 or download manually"
++    )
++    def test_with_real_sine_tone(self, tmp_path):
++        import soundfile as sf
++        from pipeline.emotion_voice import extract_voice_emotion
++
++        sr = SAMPLE_RATE
++        t = np.linspace(0, 2, sr * 2, endpoint=False)
++        tone = 0.5 * np.sin(2 * np.pi * 200 * t)
++        audio = tmp_path / "tone.wav"
++        sf.write(str(audio), tone, sr)
++        transcript = [{
++            "speaker": "S", "start": 0.0, "end": 2.0,
++            "words": [
++                {"start": 0.0, "end": 0.5},
++                {"start": 1.0, "end": 2.0},
++            ],
++        }]
++        cache = str(tmp_path / "models")
++        result = extract_voice_emotion(transcript, str(audio), model_path=cache)
++        assert len(result) == 1
++        assert 0 <= result[0]["valence"] <= 1
++        assert 0 <= result[0]["arousal"] <= 1
++        assert 0 <= result[0]["dominance"] <= 1
++        assert result[0]["valence"] != 0.0
++        assert isinstance(result[0]["valence"], float)
++
++
++class TestModelLoading:
++    def test_load_model_creates_cache_dir(self, tmp_path):
++        from pipeline.emotion_voice import _load_model
++        cache = str(tmp_path / "models")
++        with patch("pipeline.emotion_voice.Wav2Vec2FeatureExtractor") as mock_fe:
++            with patch("pipeline.emotion_voice.Wav2Vec2ForSequenceClassification") as mock_model:
++                mock_fe.from_pretrained.return_value = MagicMock()
++                mock_model.from_pretrained.return_value = MagicMock()
++                fe, model = _load_model(cache_dir=cache)
++                mock_fe.from_pretrained.assert_called_once_with(
++                    "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim", cache_dir=cache
++                )
++                mock_model.from_pretrained.assert_called_once_with(
++                    "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim", cache_dir=cache
++                )
++                assert model.eval.called

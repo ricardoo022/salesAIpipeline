@@ -99,15 +99,22 @@ class TestExtractVoiceEmotion:
         with patch("pipeline.emotion_voice._load_model") as mock_load:
             mock_fe, mock_model = MagicMock(), MagicMock()
             mock_load.return_value = (mock_fe, mock_model)
-            mock_logits = MagicMock()
-            mock_logits.logits = torch.tensor([[0.5, 0.3, 0.7]])
-            mock_model.return_value = mock_logits
+            # Distinct logits per chunk so averaging is actually exercised.
+            logits_1 = MagicMock()
+            logits_1.logits = torch.tensor([[0.6, 0.2, 0.8]])
+            logits_2 = MagicMock()
+            logits_2.logits = torch.tensor([[0.4, 0.4, 0.6]])
+            mock_model.side_effect = [logits_1, logits_2]
             with patch("pipeline.emotion_voice.librosa") as mock_lib:
                 mock_lib.load.return_value = (np.zeros(SAMPLE_RATE * 25, dtype=np.float32), SAMPLE_RATE)
                 result = extract_voice_emotion(transcript, str(audio))
-        assert result[0]["valence"] == pytest.approx(0.6225, abs=0.001)
-        assert result[0]["arousal"] == pytest.approx(0.5744, abs=0.001)
-        assert result[0]["dominance"] == pytest.approx(0.6682, abs=0.001)
+        # 20s segment with 15s max chunk -> exactly two model calls.
+        assert mock_model.call_count == 2
+        expected = torch.sigmoid(torch.tensor([[0.6, 0.2, 0.8], [0.4, 0.4, 0.6]])).numpy()
+        expected_mean = expected.mean(axis=0)
+        assert result[0]["valence"] == pytest.approx(float(expected_mean[0]), abs=0.001)
+        assert result[0]["arousal"] == pytest.approx(float(expected_mean[1]), abs=0.001)
+        assert result[0]["dominance"] == pytest.approx(float(expected_mean[2]), abs=0.001)
 
     def test_processes_multiple_segments(self, tmp_path):
         from pipeline.emotion_voice import extract_voice_emotion
@@ -149,11 +156,13 @@ class TestExtractVoiceEmotion:
 class TestExtractVoiceEmotionIntegration:
     @pytest.mark.skipif(
         not os.path.exists(
+            "models/models--audeering--wav2vec2-large-robust-12-ft-emotion-msp-dim"
+        ) and not os.path.exists(
             os.path.expanduser(
                 "~/.cache/huggingface/hub/models--audeering--wav2vec2-large-robust-12-ft-emotion-msp-dim"
             )
         ),
-        reason="audeering model not cached; run pipeline step 3 or download manually"
+        reason="audeering model not cached; run pipeline step 3 first"
     )
     def test_with_real_sine_tone(self, tmp_path):
         import soundfile as sf
