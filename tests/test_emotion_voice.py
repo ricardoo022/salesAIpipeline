@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import pytest
 import torch
@@ -106,6 +107,7 @@ class TestExtractVoiceEmotion:
                 result = extract_voice_emotion(transcript, str(audio))
         assert result[0]["valence"] == pytest.approx(0.6225, abs=0.001)
         assert result[0]["arousal"] == pytest.approx(0.5744, abs=0.001)
+        assert result[0]["dominance"] == pytest.approx(0.6682, abs=0.001)
 
     def test_processes_multiple_segments(self, tmp_path):
         from pipeline.emotion_voice import extract_voice_emotion
@@ -145,9 +147,17 @@ class TestExtractVoiceEmotion:
 
 
 class TestExtractVoiceEmotionIntegration:
+    @pytest.mark.skipif(
+        not os.path.exists(
+            os.path.expanduser(
+                "~/.cache/huggingface/hub/models--audeering--wav2vec2-large-robust-12-ft-emotion-msp-dim"
+            )
+        ),
+        reason="audeering model not cached; run pipeline step 3 or download manually"
+    )
     def test_with_real_sine_tone(self, tmp_path):
         import soundfile as sf
-        from pipeline.emotion_voice import extract_voice_emotion, _load_model
+        from pipeline.emotion_voice import extract_voice_emotion
 
         sr = SAMPLE_RATE
         t = np.linspace(0, 2, sr * 2, endpoint=False)
@@ -167,6 +177,7 @@ class TestExtractVoiceEmotionIntegration:
         assert 0 <= result[0]["valence"] <= 1
         assert 0 <= result[0]["arousal"] <= 1
         assert 0 <= result[0]["dominance"] <= 1
+        assert result[0]["valence"] != 0.0
         assert isinstance(result[0]["valence"], float)
 
 
