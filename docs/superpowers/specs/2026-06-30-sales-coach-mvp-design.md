@@ -21,7 +21,7 @@ input/
 
 pipeline/
   01_transcribe.py      → output/transcript.json   [x] complete (WhisperX + pyannote + speaker merge)
-  02_audio_features.py  → output/audio_features.json
+  02_audio_features.py  → output/audio_features.json   [x] complete (librosa: pitch, energy, speech rate, pauses, ZCR)
   03_emotion_voice.py   → output/voice_emotion.json
   04_emotion_face.py    → output/face_emotion.json
   05_llm_analysis.py    → output/analysis.json
@@ -32,7 +32,7 @@ models/
 run.py                                        [x] orchestrator working
 requirements.txt                              [x] all deps installed in venv
 .env                                          [x] .env.example created
-tests/                                        [x] pytest suite (20 tests)
+tests/                                        [x] pytest suite (39 tests)
 ```
 
 Force re-run from a specific step by deleting its output file:
@@ -70,8 +70,8 @@ rm output/analysis.json && python run.py  # re-runs steps 5 and 6 only
 
 ### Step 2 — Audio Features (`02_audio_features.py`)
 
-- Load audio with librosa
-- For each diarized segment: extract pitch mean/std, energy mean, speech rate (words/sec from step 1 word timestamps), pause ratio (silence frames / total frames), zero crossing rate
+- [x] Load audio with librosa
+- [x] For each diarized segment: extract pitch mean/std (librosa.pyin), energy mean (librosa.feature.rms), speech rate (words/sec from word timestamps), pause ratio (word-gap based), zero crossing rate
 
 **Output schema:**
 ```json
