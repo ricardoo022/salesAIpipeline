@@ -109,3 +109,26 @@ class TestBuildTimelineSeries:
         speaker_map = {"SPEAKER_00": "PROSPECT"}
         result = _build_timeline_series(voice_emotion, speaker_map)
         assert result["prospect_valence"][0]["x"] == 12.46
+
+
+class TestBuildMomentMarkers:
+    def test_builds_marker_per_moment(self):
+        from pipeline.report import _build_moment_markers
+        moments = [
+            {"timestamp": "00:12:24", "type": "pricing_objection", "description": "d", "coaching": "c"},
+        ]
+        result = _build_moment_markers(moments)
+        assert result == [{"x": 744, "timestamp": "00:12:24", "type": "pricing_objection"}]
+
+    def test_preserves_order(self):
+        from pipeline.report import _build_moment_markers
+        moments = [
+            {"timestamp": "00:00:07", "type": "a", "description": "", "coaching": ""},
+            {"timestamp": "00:01:00", "type": "b", "description": "", "coaching": ""},
+        ]
+        result = _build_moment_markers(moments)
+        assert [m["x"] for m in result] == [7, 60]
+
+    def test_empty_list_returns_empty(self):
+        from pipeline.report import _build_moment_markers
+        assert _build_moment_markers([]) == []

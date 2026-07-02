@@ -75,3 +75,11 @@ def _build_timeline_series(voice_emotion, speaker_map):
         elif role == "REP":
             series["rep_arousal"].append({"x": x, "y": seg["arousal"]})
     return series
+
+
+def _build_moment_markers(critical_moments):
+    """Chart annotation points for critical moments: {x (seconds), timestamp, type}."""
+    return [
+        {"x": _parse_timestamp(m["timestamp"]), "timestamp": m["timestamp"], "type": m["type"]}
+        for m in critical_moments
+    ]
