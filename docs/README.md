@@ -21,6 +21,7 @@ Implementation plans with task breakdowns, written before each development sessi
 | `2026-06-30-audio-extraction-and-setup.md` | Audio extraction setup, venv, video download — tasks 0–4 |
 | `2026-07-01-step-3-voice-emotion.md` | Step 3 (Voice Emotion) implementation plan — audeering wav2vec2 module, CLI, TDD tasks |
 | `2026-07-02-step4-face-emotion.md` | Step 4 (Facial Emotion) implementation plan — DeepFace + OpenCV module, CLI, TDD tasks |
+| `2026-07-02-step5-llm-analysis.md` | Step 5 (LLM Analysis) implementation plan — Claude tool-use, transcript-only vs multimodal, truncation guard, TDD tasks |
 
 ### `steps/`
 

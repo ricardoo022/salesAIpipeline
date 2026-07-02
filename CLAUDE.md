@@ -16,7 +16,7 @@ input/meeting.mp4
   → pipeline/02_audio_features.py  → output/audio_features.json  (librosa: pitch mean/std, energy mean, speech rate, pause ratio, ZCR)
   → pipeline/03_emotion_voice.py   → output/voice_emotion.json   (audeering wav2vec2: valence, arousal, dominance per segment ✓)
   → pipeline/04_emotion_face.py    → output/face_emotion.json    (DeepFace retinaface, every 10s, scores normalized 0–1 ✓)
-  → pipeline/05_llm_analysis.py    → output/analysis.json        (Claude API, run twice: transcript-only + multimodal)
+  → pipeline/05_llm_analysis.py    → output/analysis.json        (Claude API, run twice: transcript-only + multimodal ✓)
   → pipeline/06_report.py          → output/report.html           (pure HTML + Chart.js via CDN)
 ```
 
@@ -32,6 +32,7 @@ The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they han
 - `pipeline/features.py` — `extract_audio_features()` — librosa pitch, energy, speech rate, pause ratio, ZCR per segment
 - `pipeline/emotion_voice.py` — `extract_voice_emotion()` — audeering wav2vec2 VAD per segment; reconstructs `Wav2Vec2ForSpeechClassification` head (class removed from modern transformers)
 - `pipeline/emotion_face.py` — `extract_face_emotion()` — DeepFace emotion per sampled frame (every 10s); retinaface detector, scores normalized 0–1, no-face frames skipped
+- `pipeline/llm_analysis.py` — `run_analysis()` — merges the 4 upstream JSONs, calls Claude twice (transcript-only + multimodal) with forced tool-use; deterministic talk_ratio; lazy-imports anthropic
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
 
@@ -66,6 +67,16 @@ DeepFace returns emotion scores as **0–100 percentages**, not 0–1. `_shape_e
 
 `cv2` and `deepface` are lazy-imported inside `_iter_frames`/`_analyze_frame` (same pattern as pyannote in `diarize.py`), so the module loads without TensorFlow and the 13 unit tests run dep-free (patching the seams / injecting a `sys.modules` fake).
 
+### Claude tool-use + truncation guard (Step 5)
+
+`pipeline/llm_analysis.py` forces structured output via Claude **tool-use** (`tool_choice={"type": "tool", "name": "submit_analysis"}`) rather than parsing free text — the model is constrained to emit JSON matching `ANALYSIS_TOOL.input_schema`, so the analysis is always well-formed. `anthropic` is lazy-imported inside `_call_claude()` (same pattern as pyannote/cv2-deepface) so the unit tests run without the SDK, injecting a fake into `sys.modules["anthropic"]`.
+
+**MAX_TOKENS truncation gotcha:** with `max_tokens=4096`, the multimodal call surfaced 13–15 detailed `critical_moments` that consumed the entire budget before `recommendations` was emitted — the tool_use block closed `critical_moments` and the partial JSON parsed into a *valid-but-incomplete* dict (missing `recommendations`), which silently flowed into `analysis.json`. Forced `tool_choice` guarantees a tool_use *block*, not a *complete* one. The guard is three-layered: `MAX_TOKENS=8192`, a `stop_reason == "max_tokens"` check, and `_validate_analysis()` asserting all required fields present. Getting this wrong ships a broken multimodal block that step 6 renders as if complete.
+
+**Deterministic talk_ratio:** `talk_ratio` is computed from transcript talk-time (`_compute_talk_ratio`), not LLM-generated — LLMs are unreliable at exact arithmetic. It's injected into both `transcript_only` and `multimodal` outputs, so the ratio is identical and correct across modes (the tool schema deliberately omits it).
+
+**Speaker → REP/PROSPECT:** diarization yields `SPEAKER_00/01/02`; `_classify_speakers()` maps by talk time (longest = REP, second = PROSPECT, rest = OTHER) — a deterministic, testable default, not an extra API call.
+
 ## Project Structure
 
 ```
@@ -89,7 +100,7 @@ python -m pytest tests/test_transcribe.py -v    # single file
 python -m pytest tests/ -v -k "test_loads"      # single test by name
 ```
 
-68 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/emotion_voice.py` (extract_voice_emotion — 10 tests: 9 mocked + 1 integration with real model, skip-guarded if cache missing), `pipeline/emotion_face.py` (extract_face_emotion — 16 tests: 13 mocked/pure unit + 2 cv2 integration + 1 skip-guarded full DeepFace integration), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio), `pipeline/03_emotion_voice.py` subprocess guards (2 tests: missing segments, missing audio), `pipeline/04_emotion_face.py` subprocess guard (1 test: missing video).
+133 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/emotion_voice.py` (extract_voice_emotion — 10 tests: 9 mocked + 1 integration with real model, skip-guarded if cache missing), `pipeline/emotion_face.py` (extract_face_emotion — 16 tests: 13 mocked/pure unit + 2 cv2 integration + 1 skip-guarded full DeepFace integration), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio), `pipeline/03_emotion_voice.py` subprocess guards (2 tests: missing segments, missing audio), `pipeline/04_emotion_face.py` subprocess guard (1 test: missing video), `pipeline/llm_analysis.py` (run_analysis — 63 tests: 35 pure unit + 8 mocked-seam with a fake `anthropic` injected into `sys.modules` + 5 orchestration + 14 real-data tests on the actual `output/*.json` + 1 skip-guarded live Claude integration), `pipeline/05_llm_analysis.py` subprocess guards (2 tests: missing inputs, missing `ANTHROPIC_API_KEY`).
 
 ## Key Design Decisions
 
