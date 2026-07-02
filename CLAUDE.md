@@ -172,4 +172,4 @@ HF_TOKEN=...                # HuggingFace token — required for pyannote diariz
 
 **face_emotion.json**: Array of `{timestamp, dominant_emotion, scores{}}` — one entry per 10s video sample. `scores` are 7 emotion probabilities normalized to 0–1 (DeepFace returns 0–100). Frames with no detected face are skipped (no crash).
 
-**analysis.json**: `{transcript_only: {...}, multimodal: {...}}` — both LLM outputs with engagement_score, deal_probability, critical_moments[], coaching_recommendations[], talk_ratio.
+**analysis.json**: `{transcript_only: {...}, multimodal: {...}}` — both LLM outputs with engagement_score, deal_probability, critical_moments[], recommendations[], talk_ratio.
