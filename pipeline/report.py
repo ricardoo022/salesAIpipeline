@@ -41,3 +41,19 @@ def _classify_speakers(transcript):
     for i, sp in enumerate(ranked):
         mapping[sp] = "REP" if i == 0 else ("PROSPECT" if i == 1 else "OTHER")
     return mapping
+
+
+def _meeting_duration(transcript):
+    """Total meeting duration in seconds: the latest segment end time."""
+    if not transcript:
+        return 0
+    return max(seg.get("end", 0) for seg in transcript)
+
+
+def _count_missing_face_frames(face_emotion, duration, interval=10):
+    """Expected sample count (one every `interval`s, starting at 0) minus actual.
+
+    Never negative -- extra/duplicate samples don't count as "missing".
+    """
+    expected = int(duration // interval) + 1
+    return max(0, expected - len(face_emotion))

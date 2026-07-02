@@ -48,3 +48,31 @@ class TestClassifySpeakers:
         ]
         result = _classify_speakers(transcript)
         assert result["SPEAKER_02"] == "OTHER"
+
+
+class TestMeetingDuration:
+    def test_returns_max_end_time(self):
+        from pipeline.report import _meeting_duration
+        transcript = [{"start": 0, "end": 10}, {"start": 10, "end": 25.5}]
+        assert _meeting_duration(transcript) == 25.5
+
+    def test_empty_transcript_returns_zero(self):
+        from pipeline.report import _meeting_duration
+        assert _meeting_duration([]) == 0
+
+
+class TestCountMissingFaceFrames:
+    def test_no_missing_frames(self):
+        from pipeline.report import _count_missing_face_frames
+        face_emotion = [{"timestamp": t} for t in (0.0, 10.0, 20.0)]
+        assert _count_missing_face_frames(face_emotion, duration=25, interval=10) == 0
+
+    def test_counts_missing_frames(self):
+        from pipeline.report import _count_missing_face_frames
+        face_emotion = [{"timestamp": 0.0}]
+        assert _count_missing_face_frames(face_emotion, duration=25, interval=10) == 2
+
+    def test_never_negative(self):
+        from pipeline.report import _count_missing_face_frames
+        face_emotion = [{"timestamp": t} for t in (0.0, 10.0, 20.0, 30.0, 40.0)]
+        assert _count_missing_face_frames(face_emotion, duration=25, interval=10) == 0
