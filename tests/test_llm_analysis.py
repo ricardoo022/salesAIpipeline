@@ -528,6 +528,137 @@ class TestRunAnalysis:
             )
 
 
+def _real_outputs_available():
+    return all(
+        os.path.exists(f"output/{name}.json")
+        for name in ("transcript", "audio_features", "voice_emotion", "face_emotion")
+    )
+
+
+def _load_real_outputs():
+    outputs = {}
+    for name in ("transcript", "audio_features", "voice_emotion", "face_emotion"):
+        with open(f"output/{name}.json") as f:
+            outputs[name] = json.load(f)
+    return outputs
+
+
+@pytest.mark.skipif(not _real_outputs_available(), reason="requires the four real output/*.json")
+class TestClassifySpeakersRealData:
+    def test_longest_talker_is_rep(self):
+        from pipeline.llm_analysis import _classify_speakers
+        mapping = _classify_speakers(_load_real_outputs()["transcript"])
+        assert mapping["SPEAKER_00"] == "REP"
+        assert mapping["SPEAKER_01"] == "PROSPECT"
+        assert mapping["SPEAKER_02"] == "OTHER"
+
+
+@pytest.mark.skipif(not _real_outputs_available(), reason="requires the four real output/*.json")
+class TestComputeTalkRatioRealData:
+    def test_measured_ratio_matches_real_talk_time(self):
+        from pipeline.llm_analysis import _classify_speakers, _compute_talk_ratio
+        d = _load_real_outputs()
+        sm = _classify_speakers(d["transcript"])
+        # SPEAKER_00 ~494s, SPEAKER_01 ~225s -> 69/31
+        assert _compute_talk_ratio(d["transcript"], sm) == {"rep": 69, "prospect": 31}
+
+
+@pytest.mark.skipif(not _real_outputs_available(), reason="requires the four real output/*.json")
+class TestMergeSegmentsRealData:
+    def _merged(self):
+        from pipeline.llm_analysis import _classify_speakers, _merge_segments
+        d = _load_real_outputs()
+        sm = _classify_speakers(d["transcript"])
+        return _merge_segments(d["transcript"], d["audio_features"], d["voice_emotion"], d["face_emotion"], sm)
+
+    def test_one_merged_record_per_transcript_segment(self):
+        merged = self._merged()
+        assert len(merged) == 197
+
+    def test_drops_word_timestamps_and_avg_logprob(self):
+        merged = self._merged()
+        assert not any("words" in x for x in merged)
+        assert not any("avg_logprob" in x for x in merged)
+
+    def test_every_segment_has_audio_voice_and_face(self):
+        merged = self._merged()
+        assert all("audio" in x and "voice" in x and "face" in x for x in merged)
+
+    def test_speakers_relabeled_to_roles(self):
+        merged = self._merged()
+        assert set(x["speaker"] for x in merged) == {"REP", "PROSPECT", "OTHER"}
+
+
+@pytest.mark.skipif(not _real_outputs_available(), reason="requires the four real output/*.json")
+class TestPromptsRealData:
+    def _merged(self):
+        from pipeline.llm_analysis import _classify_speakers, _merge_segments
+        d = _load_real_outputs()
+        sm = _classify_speakers(d["transcript"])
+        return _merge_segments(d["transcript"], d["audio_features"], d["voice_emotion"], d["face_emotion"], sm)
+
+    def test_transcript_prompt_excludes_all_modalities(self):
+        from pipeline.llm_analysis import _build_transcript_prompt
+        prompt = _build_transcript_prompt(self._merged())
+        assert "Audio:" not in prompt
+        assert "Voice emotion:" not in prompt
+        assert "Facial:" not in prompt
+
+    def test_multimodal_prompt_contains_signal_fields(self):
+        from pipeline.llm_analysis import _build_multimodal_prompt
+        prompt = _build_multimodal_prompt(self._merged())
+        assert "Audio:" in prompt
+        assert "Voice emotion:" in prompt
+        assert "valence=" in prompt
+        assert "Facial:" in prompt
+
+    def test_multimodal_prompt_contains_real_dissonance_moment(self):
+        from pipeline.llm_analysis import _build_multimodal_prompt
+        prompt = _build_multimodal_prompt(self._merged())
+        # 03:39 prospect question: text reads positive, voice valence ~0.39 (hidden concern)
+        assert "What would that look like for the company" in prompt
+
+
+@pytest.mark.skipif(
+    not os.path.exists("output/analysis.json"),
+    reason="requires output/analysis.json (run: python pipeline/05_llm_analysis.py)",
+)
+class TestRealAnalysisArtifact:
+    def _load(self):
+        with open("output/analysis.json") as f:
+            return json.load(f)
+
+    def test_both_modes_have_full_schema(self):
+        d = self._load()
+        for mode in ("transcript_only", "multimodal"):
+            assert set(d[mode].keys()) == {
+                "engagement_score", "deal_probability", "talk_ratio",
+                "critical_moments", "recommendations",
+            }
+
+    def test_scores_are_ints_in_range(self):
+        d = self._load()
+        for mode in ("transcript_only", "multimodal"):
+            assert isinstance(d[mode]["engagement_score"], int)
+            assert isinstance(d[mode]["deal_probability"], int)
+            assert 0 <= d[mode]["engagement_score"] <= 100
+            assert 0 <= d[mode]["deal_probability"] <= 100
+
+    def test_measured_talk_ratio_injected_into_both_modes(self):
+        d = self._load()
+        for mode in ("transcript_only", "multimodal"):
+            assert d[mode]["talk_ratio"] == {"rep": 69, "prospect": 31}
+
+    def test_multimodal_sees_at_least_as_many_moments_as_transcript_only(self):
+        d = self._load()
+        assert len(d["multimodal"]["critical_moments"]) >= len(d["transcript_only"]["critical_moments"])
+
+    def test_both_modes_have_recommendations(self):
+        d = self._load()
+        assert len(d["transcript_only"]["recommendations"]) >= 1
+        assert len(d["multimodal"]["recommendations"]) >= 1
+
+
 class TestRunAnalysisIntegration:
     @pytest.mark.skipif(
         not _anthropic_available()
@@ -555,8 +686,20 @@ class TestRunAnalysisIntegration:
         )
         assert set(result.keys()) == {"transcript_only", "multimodal"}
         for mode in ("transcript_only", "multimodal"):
+            assert isinstance(result[mode]["engagement_score"], int)
+            assert isinstance(result[mode]["deal_probability"], int)
             assert 0 <= result[mode]["engagement_score"] <= 100
             assert 0 <= result[mode]["deal_probability"] <= 100
-            assert "talk_ratio" in result[mode]
             assert isinstance(result[mode]["critical_moments"], list)
             assert isinstance(result[mode]["recommendations"], list)
+            assert len(result[mode]["recommendations"]) >= 1
+            # talk_ratio is measured deterministically (not LLM-generated) and identical in both modes
+            assert result[mode]["talk_ratio"] == {"rep": 69, "prospect": 31}
+        # killer feature: multimodal surfaces >= as many moments as text-only
+        assert len(result["multimodal"]["critical_moments"]) >= len(result["transcript_only"]["critical_moments"])
+        # multimodal actually used the voice/face signals transcript-only structurally cannot see
+        mm_text = json.dumps(result["multimodal"]).lower()
+        to_text = json.dumps(result["transcript_only"]).lower()
+        assert any(term in mm_text for term in ("valence", "arousal", "dominance", "facial"))
+        for term in ("valence", "arousal"):
+            assert term not in to_text
