@@ -77,6 +77,31 @@ Note: `speaker` labels (`SPEAKER_00`, `SPEAKER_01`, ...) are arbitrary IDs assig
 | `pause_ratio` | float 0–1 | Fraction of the segment spent in pauses between words. 0.2 = 20% of the time was silence. High = hesitation or strategic pausing; low = fluent or rushed. Computed from gaps between consecutive word timestamps |
 | `zcr` | float | Zero crossing rate — how often the audio signal crosses zero. Higher values correlate with roughness/noise in the voice (fricatives, emotion); lower values with smooth periodic sounds (vowels) |
 
+## voice_emotion.json field reference
+
+`voice_emotion.json` is a JSON array — one object per speech segment, parallel to `transcript.json` and `audio_features.json`. Example segment:
+
+```json
+{
+  "speaker": "SPEAKER_01",
+  "start": 12.4,
+  "end": 18.1,
+  "valence": 0.6513,
+  "arousal": 0.5250,
+  "dominance": 0.5701
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `speaker` | string | Speaker label from the transcript — matches the same segment in `transcript.json` and `audio_features.json` |
+| `start` / `end` | float (seconds) | When this segment starts/ends — copy of the transcript value |
+| `valence` | float 0–1 | How positive (near 1) or negative (near 0) the voice sounded. Low valence = discomfort, skepticism, or dissatisfaction. High valence = enthusiasm, agreement, interest. A prospect who says "yes" with low valence is not truly convinced |
+| `arousal` | float 0–1 | How calm (near 0) or excited (near 1) the voice sounded. Low arousal + low valence = disengagement (danger zone). High arousal + high valence = engagement and enthusiasm. A sudden arousal spike can signal a strong objection forming |
+| `dominance` | float 0–1 | How dominant/assertive (near 1) or submissive/passive (near 0) the voice sounded. A dominance shift in the prospect = pushback or strong objection forming. High dominance from the rep = controlling the conversation |
+
+> **Model:** `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim` — a wav2vec2-large model fine-tuned on the MSP-Dim speech emotion dataset. The head is a **regression** head (not a classifier), so values are continuous VAD dimensions directly — no sigmoid applied. The model returns `[arousal, dominance, valence]` per its `config.json`; the output dict reorders to `{valence, arousal, dominance}`. See `docs/steps/step3-walkthrough.md` for the full implementation story, including the bugs found via statistical validation.
+
 ## Re-running from a specific step
 
 Delete the output file for the step you want to re-run. `run.py` skips steps whose output already exists, so only the deleted step and everything after it will re-execute:
