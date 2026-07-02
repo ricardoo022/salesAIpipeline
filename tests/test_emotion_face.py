@@ -15,7 +15,8 @@ def _deepface_available():
 class TestShapeEmotionResult:
     def test_extracts_dominant_and_scores(self):
         from pipeline.emotion_face import _shape_emotion_result
-        raw = {"dominant_emotion": "happy", "emotion": {"happy": 0.9123, "sad": 0.0877}}
+        # DeepFace returns emotion scores as 0-100 percentages; the spec wants 0-1.
+        raw = {"dominant_emotion": "happy", "emotion": {"happy": 91.23, "sad": 8.77}}
         result = _shape_emotion_result(raw)
         assert result["dominant_emotion"] == "happy"
         assert result["scores"]["happy"] == 0.9123
@@ -23,17 +24,25 @@ class TestShapeEmotionResult:
 
     def test_rounds_scores_to_four_decimals(self):
         from pipeline.emotion_face import _shape_emotion_result
-        raw = {"dominant_emotion": "neutral", "emotion": {"neutral": 0.712345, "happy": 0.031111}}
+        raw = {"dominant_emotion": "neutral", "emotion": {"neutral": 71.2345, "happy": 3.1111}}
         result = _shape_emotion_result(raw)
         assert result["scores"]["neutral"] == 0.7123
         assert result["scores"]["happy"] == 0.0311
 
     def test_unwraps_list_result(self):
         from pipeline.emotion_face import _shape_emotion_result
-        raw = [{"dominant_emotion": "sad", "emotion": {"sad": 0.6, "neutral": 0.4}}]
+        raw = [{"dominant_emotion": "sad", "emotion": {"sad": 60.0, "neutral": 40.0}}]
         result = _shape_emotion_result(raw)
         assert result["dominant_emotion"] == "sad"
         assert result["scores"]["sad"] == 0.6
+
+    def test_normalizes_percentages_to_zero_one(self):
+        from pipeline.emotion_face import _shape_emotion_result
+        raw = {"dominant_emotion": "happy", "emotion": {"happy": 99.5128, "neutral": 0.4872}}
+        result = _shape_emotion_result(raw)
+        assert result["scores"]["happy"] == 0.9951
+        assert result["scores"]["neutral"] == 0.0049
+        assert all(0.0 <= v <= 1.0 for v in result["scores"].values())
 
 
 class TestAnalyzeFrame:
@@ -52,7 +61,7 @@ class TestAnalyzeFrame:
         import sys
         fake_df = MagicMock()
         fake_df.DeepFace.analyze.return_value = [
-            {"dominant_emotion": "happy", "emotion": {"happy": 0.9, "neutral": 0.1}}
+            {"dominant_emotion": "happy", "emotion": {"happy": 90.0, "neutral": 10.0}}
         ]
         sys.modules["deepface"] = fake_df
         try:

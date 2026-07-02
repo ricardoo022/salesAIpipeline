@@ -25,14 +25,15 @@ def _shape_emotion_result(raw: dict) -> dict:
     """Normalize a DeepFace emotion analysis result into our output shape.
 
     DeepFace.analyze returns either a dict or a list of dicts (one per face);
-    we take the first face. Returns {dominant_emotion, scores} with scores
-    rounded to 4 decimals for consistency with the rest of the pipeline.
+    we take the first face. Emotion scores come back as 0-100 percentages and
+    are normalized to 0-1 (rounded to 4 decimals) to match the spec schema and
+    the 0-1 range used by step 3 (voice emotion).
     """
     if isinstance(raw, list):
         raw = raw[0]
     emotions = raw["emotion"]
     dominant = raw["dominant_emotion"]
-    scores = {k: round(float(v), 4) for k, v in emotions.items()}
+    scores = {k: round(float(v) / 100, 4) for k, v in emotions.items()}
     return {"dominant_emotion": dominant, "scores": scores}
 
 
