@@ -285,14 +285,24 @@ def _install_fake_anthropic(fake):
     sys.modules["anthropic"] = fake
 
 
-def _make_fake_anthropic(create_side_effect=None, create_return=None):
+_COMPLETE_INPUT = {
+    "engagement_score": 61,
+    "deal_probability": 45,
+    "critical_moments": [],
+    "recommendations": [],
+}
+
+
+def _make_fake_anthropic(create_side_effect=None, create_return=None, stop_reason="end_turn"):
     fake = MagicMock()
     fake.RateLimitError = type("RateLimitError", (Exception,), {})
     client = MagicMock()
     if create_side_effect is not None:
         client.messages.create.side_effect = create_side_effect
     else:
-        client.messages.create.return_value = create_return
+        resp = create_return if create_return is not None else MagicMock()
+        resp.stop_reason = stop_reason
+        client.messages.create.return_value = resp
     fake.Anthropic.return_value = client
     return fake
 
@@ -313,10 +323,8 @@ class TestExtractToolInput:
 
 class TestCallClaude:
     def test_extracts_tool_input(self):
-        tool_input = {"engagement_score": 61, "deal_probability": 45,
-                      "critical_moments": [], "recommendations": []}
         fake = _make_fake_anthropic(
-            create_return=MagicMock(content=[MagicMock(type="tool_use", input=tool_input)])
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input=_COMPLETE_INPUT)])
         )
         _install_fake_anthropic(fake)
         try:
@@ -324,11 +332,11 @@ class TestCallClaude:
             result = _call_claude("prompt", "key")
         finally:
             del sys.modules["anthropic"]
-        assert result == tool_input
+        assert result == _COMPLETE_INPUT
 
     def test_uses_forced_tool_choice(self):
         fake = _make_fake_anthropic(
-            create_return=MagicMock(content=[MagicMock(type="tool_use", input={})])
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input=_COMPLETE_INPUT)])
         )
         _install_fake_anthropic(fake)
         try:
@@ -340,16 +348,17 @@ class TestCallClaude:
         kwargs = client.messages.create.call_args.kwargs
         assert kwargs["tool_choice"] == {"type": "tool", "name": "submit_analysis"}
         assert kwargs["model"] == "claude-sonnet-4-6"
+        assert kwargs["max_tokens"] == 8192
 
     def test_retries_once_on_rate_limit(self):
-        tool_input = {"engagement_score": 1}
         fake = _make_fake_anthropic()
         RateLimitError = fake.RateLimitError
         client = fake.Anthropic.return_value
-        client.messages.create.side_effect = [
-            RateLimitError("limit"),
-            MagicMock(content=[MagicMock(type="tool_use", input=tool_input)]),
-        ]
+        success = MagicMock(
+            content=[MagicMock(type="tool_use", input=_COMPLETE_INPUT)],
+            stop_reason="end_turn",
+        )
+        client.messages.create.side_effect = [RateLimitError("limit"), success]
         _install_fake_anthropic(fake)
         try:
             with patch("pipeline.llm_analysis.time.sleep") as sleep:
@@ -357,13 +366,13 @@ class TestCallClaude:
                 result = _call_claude("prompt", "key")
         finally:
             del sys.modules["anthropic"]
-        assert result == tool_input
+        assert result == _COMPLETE_INPUT
         assert client.messages.create.call_count == 2
         sleep.assert_called_once_with(10)
 
     def test_passes_api_key_to_client(self):
         fake = _make_fake_anthropic(
-            create_return=MagicMock(content=[MagicMock(type="tool_use", input={})])
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input=_COMPLETE_INPUT)])
         )
         _install_fake_anthropic(fake)
         try:
@@ -372,6 +381,47 @@ class TestCallClaude:
         finally:
             del sys.modules["anthropic"]
         fake.Anthropic.assert_called_once_with(api_key="secret-key")
+
+    def test_raises_on_max_tokens_truncation(self):
+        fake = _make_fake_anthropic(
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input=_COMPLETE_INPUT)]),
+            stop_reason="max_tokens",
+        )
+        _install_fake_anthropic(fake)
+        try:
+            from pipeline.llm_analysis import _call_claude
+            with pytest.raises(RuntimeError, match="truncat"):
+                _call_claude("prompt", "key")
+        finally:
+            del sys.modules["anthropic"]
+
+    def test_raises_on_incomplete_tool_input(self):
+        incomplete = {
+            "engagement_score": 1, "deal_probability": 1, "critical_moments": [],
+        }
+        fake = _make_fake_anthropic(
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input=incomplete)]),
+            stop_reason="end_turn",
+        )
+        _install_fake_anthropic(fake)
+        try:
+            from pipeline.llm_analysis import _call_claude
+            with pytest.raises(RuntimeError, match="incomplete"):
+                _call_claude("prompt", "key")
+        finally:
+            del sys.modules["anthropic"]
+
+
+class TestValidateAnalysis:
+    def test_complete_input_does_not_raise(self):
+        from pipeline.llm_analysis import _validate_analysis
+        _validate_analysis(_COMPLETE_INPUT)
+
+    def test_missing_field_raises(self):
+        from pipeline.llm_analysis import _validate_analysis
+        incomplete = {"engagement_score": 1, "deal_probability": 1, "critical_moments": []}
+        with pytest.raises(RuntimeError, match="incomplete"):
+            _validate_analysis(incomplete)
 
 
 class TestRunAnalysis:

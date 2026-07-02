@@ -15,8 +15,9 @@ import os
 import time
 
 MODEL_NAME = "claude-sonnet-4-6"
-MAX_TOKENS = 4096
+MAX_TOKENS = 8192
 RATE_LIMIT_WAIT = 10  # seconds; spec: retry once after 10s
+REQUIRED_FIELDS = ("engagement_score", "deal_probability", "critical_moments", "recommendations")
 
 TRANSCRIPT_FILE = "output/transcript.json"
 AUDIO_FEATURES_FILE = "output/audio_features.json"
@@ -266,10 +267,27 @@ def _extract_tool_input(response) -> dict:
     raise RuntimeError("Claude did not return a tool_use block")
 
 
+def _validate_analysis(result: dict) -> None:
+    """Ensure the tool-use input has all required schema fields.
+
+    Forced tool_choice guarantees a tool_use block exists, but max_tokens
+    truncation can yield a valid-but-incomplete input (e.g. critical_moments
+    closed before recommendations emitted). This turns a silent schema
+    violation into a loud failure instead of writing broken analysis.json.
+    """
+    missing = [f for f in REQUIRED_FIELDS if f not in result]
+    if missing:
+        raise RuntimeError(
+            f"Claude analysis incomplete (missing: {', '.join(missing)}); "
+            "likely max_tokens truncation"
+        )
+
+
 def _call_claude(user_prompt: str, api_key: str) -> dict:
     """Call Claude with forced tool_use to guarantee the analysis schema.
 
     Retries once after RATE_LIMIT_WAIT seconds on a rate-limit error (spec).
+    Raises RuntimeError on max_tokens truncation or an incomplete tool input.
     `anthropic` is lazy-imported here so unit tests run without the SDK by
     injecting a fake into sys.modules['anthropic'] (same pattern as pyannote).
     """
@@ -281,7 +299,13 @@ def _call_claude(user_prompt: str, api_key: str) -> dict:
     except anthropic.RateLimitError:
         time.sleep(RATE_LIMIT_WAIT)
         response = _create_message(client, user_prompt)
-    return _extract_tool_input(response)
+    if getattr(response, "stop_reason", None) == "max_tokens":
+        raise RuntimeError(
+            "Claude response truncated (stop_reason=max_tokens); increase MAX_TOKENS"
+        )
+    result = _extract_tool_input(response)
+    _validate_analysis(result)
+    return result
 
 
 def run_analysis(
