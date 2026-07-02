@@ -51,3 +51,24 @@ def _classify_speakers(transcript: list[dict]) -> dict[str, str]:
     for i, sp in enumerate(ranked):
         mapping[sp] = "REP" if i == 0 else ("PROSPECT" if i == 1 else "OTHER")
     return mapping
+
+
+def _compute_talk_ratio(transcript: list[dict], speaker_map: dict[str, str]) -> dict[str, int]:
+    """Compute rep/prospect talk-time percentages (measured, not LLM-generated).
+
+    LLMs are unreliable at exact arithmetic; talk ratio is a measured fact, so
+    we compute it deterministically and inject it into both LLM outputs.
+    """
+    role_totals: dict[str, float] = {"REP": 0.0, "PROSPECT": 0.0}
+    for seg in transcript:
+        role = speaker_map.get(seg.get("speaker", ""), "OTHER")
+        dur = seg.get("end", 0) - seg.get("start", 0)
+        if role in role_totals:
+            role_totals[role] += dur
+    total = role_totals["REP"] + role_totals["PROSPECT"]
+    if total <= 0:
+        return {"rep": 0, "prospect": 0}
+    return {
+        "rep": round(role_totals["REP"] / total * 100),
+        "prospect": round(role_totals["PROSPECT"] / total * 100),
+    }

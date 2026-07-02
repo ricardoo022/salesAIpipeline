@@ -72,3 +72,40 @@ class TestClassifySpeakers:
     def test_empty_transcript(self):
         from pipeline.llm_analysis import _classify_speakers
         assert _classify_speakers([]) == {}
+
+
+class TestComputeTalkRatio:
+    def test_simple_split(self):
+        from pipeline.llm_analysis import _compute_talk_ratio
+        transcript = [
+            {"speaker": "SPEAKER_00", "start": 0.0, "end": 60.0},
+            {"speaker": "SPEAKER_01", "start": 60.0, "end": 100.0},
+        ]
+        speaker_map = {"SPEAKER_00": "REP", "SPEAKER_01": "PROSPECT"}
+        assert _compute_talk_ratio(transcript, speaker_map) == {"rep": 60, "prospect": 40}
+
+    def test_aggregates_across_segments(self):
+        from pipeline.llm_analysis import _compute_talk_ratio
+        transcript = [
+            {"speaker": "SPEAKER_00", "start": 0.0, "end": 20.0},
+            {"speaker": "SPEAKER_01", "start": 20.0, "end": 60.0},
+            {"speaker": "SPEAKER_00", "start": 60.0, "end": 80.0},
+        ]
+        speaker_map = {"SPEAKER_00": "REP", "SPEAKER_01": "PROSPECT"}
+        # REP = 40s, PROSPECT = 40s -> 50/50
+        assert _compute_talk_ratio(transcript, speaker_map) == {"rep": 50, "prospect": 50}
+
+    def test_ignores_other_speakers(self):
+        from pipeline.llm_analysis import _compute_talk_ratio
+        transcript = [
+            {"speaker": "SPEAKER_00", "start": 0.0, "end": 80.0},
+            {"speaker": "SPEAKER_01", "start": 80.0, "end": 100.0},
+            {"speaker": "SPEAKER_02", "start": 100.0, "end": 120.0},
+        ]
+        speaker_map = {"SPEAKER_00": "REP", "SPEAKER_01": "PROSPECT", "SPEAKER_02": "OTHER"}
+        # only REP + PROSPECT counted: 80 + 20 = 100 -> 80/20
+        assert _compute_talk_ratio(transcript, speaker_map) == {"rep": 80, "prospect": 20}
+
+    def test_zero_talk_time_returns_zeros(self):
+        from pipeline.llm_analysis import _compute_talk_ratio
+        assert _compute_talk_ratio([], {}) == {"rep": 0, "prospect": 0}
