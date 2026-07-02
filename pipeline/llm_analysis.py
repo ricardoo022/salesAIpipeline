@@ -244,3 +244,41 @@ def _build_multimodal_prompt(merged: list[dict]) -> str:
         "that dissonance is the key signal transcript-only analysis cannot see."
     )
     return "\n".join(lines)
+
+
+def _create_message(client, user_prompt: str):
+    """Send one Messages-API call forcing the analysis tool. Single seam."""
+    return client.messages.create(
+        model=MODEL_NAME,
+        max_tokens=MAX_TOKENS,
+        system=SYSTEM_PROMPT,
+        tools=[ANALYSIS_TOOL],
+        tool_choice={"type": "tool", "name": "submit_analysis"},
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+
+
+def _extract_tool_input(response) -> dict:
+    """Pull the first tool_use block's input out of the response content."""
+    for block in response.content:
+        if getattr(block, "type", None) == "tool_use":
+            return block.input
+    raise RuntimeError("Claude did not return a tool_use block")
+
+
+def _call_claude(user_prompt: str, api_key: str) -> dict:
+    """Call Claude with forced tool_use to guarantee the analysis schema.
+
+    Retries once after RATE_LIMIT_WAIT seconds on a rate-limit error (spec).
+    `anthropic` is lazy-imported here so unit tests run without the SDK by
+    injecting a fake into sys.modules['anthropic'] (same pattern as pyannote).
+    """
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+    try:
+        response = _create_message(client, user_prompt)
+    except anthropic.RateLimitError:
+        time.sleep(RATE_LIMIT_WAIT)
+        response = _create_message(client, user_prompt)
+    return _extract_tool_input(response)

@@ -278,3 +278,97 @@ class TestBuildMultimodalPrompt:
         from pipeline.llm_analysis import _build_multimodal_prompt
         prompt = _build_multimodal_prompt(self._merged())
         assert "dissonance" in prompt.lower()
+
+
+def _install_fake_anthropic(fake):
+    """Inject a fake `anthropic` module so the lazy import resolves to it."""
+    sys.modules["anthropic"] = fake
+
+
+def _make_fake_anthropic(create_side_effect=None, create_return=None):
+    fake = MagicMock()
+    fake.RateLimitError = type("RateLimitError", (Exception,), {})
+    client = MagicMock()
+    if create_side_effect is not None:
+        client.messages.create.side_effect = create_side_effect
+    else:
+        client.messages.create.return_value = create_return
+    fake.Anthropic.return_value = client
+    return fake
+
+
+class TestExtractToolInput:
+    def test_returns_tool_use_input(self):
+        from pipeline.llm_analysis import _extract_tool_input
+        block = MagicMock(type="tool_use", input={"engagement_score": 70})
+        response = MagicMock(content=[MagicMock(type="text"), block])
+        assert _extract_tool_input(response) == {"engagement_score": 70}
+
+    def test_raises_when_no_tool_use_block(self):
+        from pipeline.llm_analysis import _extract_tool_input
+        response = MagicMock(content=[MagicMock(type="text")])
+        with pytest.raises(RuntimeError, match="tool_use"):
+            _extract_tool_input(response)
+
+
+class TestCallClaude:
+    def test_extracts_tool_input(self):
+        tool_input = {"engagement_score": 61, "deal_probability": 45,
+                      "critical_moments": [], "recommendations": []}
+        fake = _make_fake_anthropic(
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input=tool_input)])
+        )
+        _install_fake_anthropic(fake)
+        try:
+            from pipeline.llm_analysis import _call_claude
+            result = _call_claude("prompt", "key")
+        finally:
+            del sys.modules["anthropic"]
+        assert result == tool_input
+
+    def test_uses_forced_tool_choice(self):
+        fake = _make_fake_anthropic(
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input={})])
+        )
+        _install_fake_anthropic(fake)
+        try:
+            from pipeline.llm_analysis import _call_claude
+            _call_claude("prompt", "key")
+        finally:
+            del sys.modules["anthropic"]
+        client = fake.Anthropic.return_value
+        kwargs = client.messages.create.call_args.kwargs
+        assert kwargs["tool_choice"] == {"type": "tool", "name": "submit_analysis"}
+        assert kwargs["model"] == "claude-sonnet-4-6"
+
+    def test_retries_once_on_rate_limit(self):
+        tool_input = {"engagement_score": 1}
+        fake = _make_fake_anthropic()
+        RateLimitError = fake.RateLimitError
+        client = fake.Anthropic.return_value
+        client.messages.create.side_effect = [
+            RateLimitError("limit"),
+            MagicMock(content=[MagicMock(type="tool_use", input=tool_input)]),
+        ]
+        _install_fake_anthropic(fake)
+        try:
+            with patch("pipeline.llm_analysis.time.sleep") as sleep:
+                from pipeline.llm_analysis import _call_claude
+                result = _call_claude("prompt", "key")
+        finally:
+            del sys.modules["anthropic"]
+        assert result == tool_input
+        assert client.messages.create.call_count == 2
+        sleep.assert_called_once_with(10)
+
+    def test_passes_api_key_to_client(self):
+        fake = _make_fake_anthropic(
+            create_return=MagicMock(content=[MagicMock(type="tool_use", input={})])
+        )
+        _install_fake_anthropic(fake)
+        try:
+            from pipeline.llm_analysis import _call_claude
+            _call_claude("prompt", "secret-key")
+        finally:
+            del sys.modules["anthropic"]
+        fake.Anthropic.assert_called_once_with(api_key="secret-key")
