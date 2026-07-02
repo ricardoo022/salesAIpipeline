@@ -27,3 +27,18 @@ def _shape_emotion_result(raw):
     dominant = raw["dominant_emotion"]
     scores = {k: round(float(v), 4) for k, v in emotions.items()}
     return {"dominant_emotion": dominant, "scores": scores}
+
+
+def _analyze_frame(frame):
+    """Run DeepFace emotion analysis on a single frame.
+
+    Returns {dominant_emotion, scores} or None if no face is detected.
+    DeepFace with enforce_detection=True raises ValueError when no face is
+    found — we treat that as a skip (return None), per spec.
+    """
+    from deepface import DeepFace
+    try:
+        raw = DeepFace.analyze(frame, actions=["emotion"], enforce_detection=True)
+    except ValueError:
+        return None
+    return _shape_emotion_result(raw)

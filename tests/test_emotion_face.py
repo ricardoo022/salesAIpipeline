@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import MagicMock
 
 
 class TestShapeEmotionResult:
@@ -23,3 +24,31 @@ class TestShapeEmotionResult:
         result = _shape_emotion_result(raw)
         assert result["dominant_emotion"] == "sad"
         assert result["scores"]["sad"] == 0.6
+
+
+class TestAnalyzeFrame:
+    def test_returns_none_when_no_face(self):
+        import sys
+        fake_df = MagicMock()
+        fake_df.DeepFace.analyze.side_effect = ValueError("Face could not be detected")
+        sys.modules["deepface"] = fake_df
+        try:
+            from pipeline.emotion_face import _analyze_frame
+            assert _analyze_frame("frame") is None
+        finally:
+            del sys.modules["deepface"]
+
+    def test_shapes_deepface_output(self):
+        import sys
+        fake_df = MagicMock()
+        fake_df.DeepFace.analyze.return_value = [
+            {"dominant_emotion": "happy", "emotion": {"happy": 0.9, "neutral": 0.1}}
+        ]
+        sys.modules["deepface"] = fake_df
+        try:
+            from pipeline.emotion_face import _analyze_frame
+            result = _analyze_frame("frame")
+        finally:
+            del sys.modules["deepface"]
+        assert result["dominant_emotion"] == "happy"
+        assert result["scores"]["happy"] == 0.9
