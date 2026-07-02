@@ -21,6 +21,7 @@ Implementation plans with task breakdowns, written before each development sessi
 | `2026-06-30-audio-extraction-and-setup.md` | Audio extraction setup, venv, video download — tasks 0–4 |
 | `2026-07-01-step-3-voice-emotion.md` | Step 3 (Voice Emotion) implementation plan — audeering wav2vec2 module, CLI, TDD tasks |
 | `2026-07-02-step4-face-emotion.md` | Step 4 (Facial Emotion) implementation plan — DeepFace + OpenCV module, CLI, TDD tasks |
+| `2026-07-02-step5-llm-analysis.md` | Step 5 (LLM Analysis) implementation plan — Claude tool-use, transcript-only vs multimodal, truncation guard, TDD tasks |
 
 ### `steps/`
 
@@ -32,3 +33,4 @@ Line-by-line walkthroughs of each pipeline step, written in Portuguese for the S
 | `step2-walkthrough.md` | Step 2 — Audio Features: pitch, energy, speech rate, pauses, ZCR with librosa |
 | `step3-walkthrough.md` | Step 3 — Voice Emotion: audeering wav2vec2 VAD extraction, plus bugs found via statistical validation and the fixes |
 | `step4-walkthrough.md` | Step 4 — Facial Emotion: DeepFace + OpenCV frame sampling, plus bugs found running on the real video (broken opencv detector backend, 0–100 vs 0–1 scores) |
+| `step5-walkthrough.md` | Step 5 — LLM Analysis: Claude tool-use, transcript-only vs multimodal side-by-side, the killer-feature dissonance moments, plus the MAX_TOKENS truncation bug found via code review |

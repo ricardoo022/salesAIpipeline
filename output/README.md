@@ -132,6 +132,49 @@ Frames where DeepFace detects no face are **skipped** (not included in the array
 
 > **Model:** DeepFace with `detector_backend="retinaface"` and `actions=["emotion"]`. The default `opencv` detector backend is broken under `opencv-python` 5.x (haarcascade XMLs missing from `cv2/data/`), so retinaface is used instead. DeepFace returns scores as 0–100 percentages; the module normalizes to 0–1. See `docs/steps/step4-walkthrough.md` for the full implementation story, including the bugs found running on the real video.
 
+## analysis.json field reference
+
+`analysis.json` is a JSON object with two parallel blocks — `transcript_only` and `multimodal` — produced by calling Claude twice on the same meeting. The **side-by-side contrast between the two blocks is the demo's killer feature**: the multimodal block surfaces cross-modal *dissonance* (moments where the words and the voice/face disagree) that the transcript-only block structurally cannot see. Example:
+
+```json
+{
+  "transcript_only": {
+    "engagement_score": 62,
+    "deal_probability": 45,
+    "talk_ratio": {"rep": 69, "prospect": 31},
+    "critical_moments": [
+      {"timestamp": "00:09:00", "type": "trust_objection", "description": "Prospect questioned vendor credibility", "coaching": "Prepare a proof-point case study..."}
+    ],
+    "recommendations": ["Prepare a CFO-targeted leave-behind...", "Lock a hard follow-up time..."]
+  },
+  "multimodal": {
+    "engagement_score": 58,
+    "deal_probability": 42,
+    "talk_ratio": {"rep": 69, "prospect": 31},
+    "critical_moments": [
+      {"timestamp": "00:03:43", "type": "dissonance_smile_masks_discomfort", "description": "Prospect said 'it would be bad' with a smile (face happy 0.85) but voice valence 0.30", "coaching": "Probe past the social-masking smile..."}
+    ],
+    "recommendations": ["..."]
+  }
+}
+```
+
+Inner-block fields (identical shape in both `transcript_only` and `multimodal`):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `engagement_score` | int 0–100 | Overall prospect engagement for the meeting. Multimodal is often lower than transcript-only because the voice/face signals reveal disengagement the text hides |
+| `deal_probability` | int 0–100 | Estimated likelihood the deal advances. Same caveat — multimodal is more sceptical because it sees hidden negativity |
+| `talk_ratio` | `{rep, prospect}` ints | Percentage of talk time, measured from the transcript (not LLM-generated) — **identical in both blocks**. Computed deterministically by `_compute_talk_ratio` and injected into each block |
+| `critical_moments` | array | Key moments, each with a `timestamp` (HH:MM:SS), `type`, `description`, and `coaching` note. The multimodal block typically has *more* moments because it can flag dissonance the transcript-only block cannot |
+| `critical_moments[].timestamp` | string (HH:MM:SS) | When in the meeting — matches a real segment start |
+| `critical_moments[].type` | string | Short label, e.g. `pricing_objection`, `dissonance_smile_masks_discomfort` |
+| `critical_moments[].description` | string | What happened, citing signal values in multimodal mode (e.g. "voice valence 0.30, face happy 0.85") |
+| `critical_moments[].coaching` | string | Actionable coaching for that moment |
+| `recommendations` | array of strings | Top-level coaching actions. Often overlap between the two blocks (the *moments* diverge more than the *recommendations*) |
+
+> **Model:** Anthropic Claude (`claude-sonnet-4-6`), called twice with the same system prompt but different user content — once with speaker-labeled transcript text only, once with the full per-segment blocks (text + audio features + voice emotion + facial emotion). Output is forced to the schema above via Claude **tool-use** (`tool_choice`), not free-text parsing. `talk_ratio` is computed separately and injected. Regenerate with `rm output/analysis.json && python run.py` (costs Claude API tokens).
+
 ## Re-running from a specific step
 
 Delete the output file for the step you want to re-run. `run.py` skips steps whose output already exists, so only the deleted step and everything after it will re-execute:
@@ -141,4 +184,4 @@ rm output/analysis.json && python run.py   # re-runs steps 5 and 6
 rm output/voice_emotion.json && python run.py  # re-runs steps 3 through 6
 ```
 
-This directory is gitignored.
+Regenerated artifacts (`analysis.json`, `report.html`, `audio_temp.wav`) are gitignored — they're derived outputs, safe to delete and regenerate with `python run.py`. The four upstream JSONs (`transcript`/`audio_features`/`voice_emotion`/`face_emotion`) and this README are tracked as demo fixtures so the LLM analysis and report can be regenerated without re-running the GPU-heavy steps 1–4.
