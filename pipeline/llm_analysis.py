@@ -32,3 +32,22 @@ def _format_timestamp(seconds: float) -> str:
     m = (seconds % 3600) // 60
     s = seconds % 60
     return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _classify_speakers(transcript: list[dict]) -> dict[str, str]:
+    """Map diarization labels to REP / PROSPECT / OTHER by total talk time.
+
+    Longest total talk time -> REP, second -> PROSPECT, rest -> OTHER.
+    Deterministic default (no extra API call); the LLM still reasons over both
+    speakers' content regardless of label. Single swap point for an LLM-infer
+    call later.
+    """
+    totals: dict[str, float] = {}
+    for seg in transcript:
+        sp = seg.get("speaker", "UNKNOWN")
+        totals[sp] = totals.get(sp, 0.0) + (seg.get("end", 0) - seg.get("start", 0))
+    ranked = sorted(totals, key=lambda s: totals[s], reverse=True)
+    mapping: dict[str, str] = {}
+    for i, sp in enumerate(ranked):
+        mapping[sp] = "REP" if i == 0 else ("PROSPECT" if i == 1 else "OTHER")
+    return mapping
