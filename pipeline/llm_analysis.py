@@ -72,3 +72,66 @@ def _compute_talk_ratio(transcript: list[dict], speaker_map: dict[str, str]) -> 
         "rep": round(role_totals["REP"] / total * 100),
         "prospect": round(role_totals["PROSPECT"] / total * 100),
     }
+
+
+def _face_for_segment(segment: dict, face_emotion: list[dict]) -> dict | None:
+    """Return the face sample nearest the segment midpoint, or None.
+
+    Face emotion is sampled every 10s with no speaker attribution, so each
+    segment takes the nearest sample (always within ~5s for a 10s cadence).
+    The LLM interprets the (speaker-ambiguous) reading; face is the weakest
+    signal and the system prompt says so.
+    """
+    if not face_emotion:
+        return None
+    midpoint = (segment["start"] + segment["end"]) / 2
+    return min(face_emotion, key=lambda fr: abs(fr["timestamp"] - midpoint))
+
+
+def _merge_segments(
+    transcript: list[dict],
+    audio_features: list[dict],
+    voice_emotion: list[dict],
+    face_emotion: list[dict],
+    speaker_map: dict[str, str],
+) -> list[dict]:
+    """Merge the three index-aligned per-segment arrays + nearest face sample.
+
+    Drops word timestamps / avg_logprob (LLM-irrelevant, ~200KB of the 330KB
+    transcript). Relabels speakers to roles. Returns compact per-segment dicts.
+    """
+    merged = []
+    for i, seg in enumerate(transcript):
+        role = speaker_map.get(seg.get("speaker", ""), "OTHER")
+        item = {
+            "speaker": role,
+            "start": seg["start"],
+            "end": seg["end"],
+            "text": seg.get("text", "").strip(),
+        }
+        if i < len(audio_features):
+            a = audio_features[i]
+            item["audio"] = {
+                "pitch_mean": a.get("pitch_mean"),
+                "pitch_std": a.get("pitch_std"),
+                "energy_mean": a.get("energy_mean"),
+                "speech_rate": a.get("speech_rate"),
+                "pause_ratio": a.get("pause_ratio"),
+                "zcr": a.get("zcr"),
+            }
+        if i < len(voice_emotion):
+            v = voice_emotion[i]
+            item["voice"] = {
+                "valence": v.get("valence"),
+                "arousal": v.get("arousal"),
+                "dominance": v.get("dominance"),
+            }
+        face = _face_for_segment(seg, face_emotion)
+        if face is not None:
+            item["face"] = {
+                "dominant_emotion": face.get("dominant_emotion"),
+                "scores": face.get("scores"),
+                "timestamp": face.get("timestamp"),
+            }
+        merged.append(item)
+    return merged
