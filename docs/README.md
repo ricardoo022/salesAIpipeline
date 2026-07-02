@@ -33,3 +33,4 @@ Line-by-line walkthroughs of each pipeline step, written in Portuguese for the S
 | `step2-walkthrough.md` | Step 2 — Audio Features: pitch, energy, speech rate, pauses, ZCR with librosa |
 | `step3-walkthrough.md` | Step 3 — Voice Emotion: audeering wav2vec2 VAD extraction, plus bugs found via statistical validation and the fixes |
 | `step4-walkthrough.md` | Step 4 — Facial Emotion: DeepFace + OpenCV frame sampling, plus bugs found running on the real video (broken opencv detector backend, 0–100 vs 0–1 scores) |
+| `step5-walkthrough.md` | Step 5 — LLM Analysis: Claude tool-use, transcript-only vs multimodal side-by-side, the killer-feature dissonance moments, plus the MAX_TOKENS truncation bug found via code review |
