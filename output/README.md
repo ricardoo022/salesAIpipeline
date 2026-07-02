@@ -102,6 +102,36 @@ Note: `speaker` labels (`SPEAKER_00`, `SPEAKER_01`, ...) are arbitrary IDs assig
 
 > **Model:** `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim` — a wav2vec2-large model fine-tuned on the MSP-Dim speech emotion dataset. The head is a **regression** head (not a classifier), so values are continuous VAD dimensions directly — no sigmoid applied. The model returns `[arousal, dominance, valence]` per its `config.json`; the output dict reorders to `{valence, arousal, dominance}`. See `docs/steps/step3-walkthrough.md` for the full implementation story, including the bugs found via statistical validation.
 
+## face_emotion.json field reference
+
+`face_emotion.json` is a JSON array — one object per sampled video frame (every 10 seconds), independent of the per-segment structure of `transcript.json`/`audio_features.json`/`voice_emotion.json`. Example frame:
+
+```json
+{
+  "timestamp": 100.0,
+  "dominant_emotion": "neutral",
+  "scores": {
+    "angry": 0.0035,
+    "disgust": 0.0,
+    "fear": 0.0037,
+    "happy": 0.205,
+    "sad": 0.0279,
+    "surprise": 0.0,
+    "neutral": 0.7598
+  }
+}
+```
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `timestamp` | float (seconds) | When in the video this frame was sampled. One frame every 10s (`0.0, 10.0, 20.0, …`), rounded to 2 decimals. Independent of the diarized segments — it samples the raw video timeline |
+| `dominant_emotion` | string | The emotion with the highest `score` — one of `angry, disgust, fear, happy, sad, surprise, neutral`. Quick at-a-glance reading of the facial state at that moment |
+| `scores` | object | All 7 emotion probabilities, each a float 0–1 (normalized from DeepFace's 0–100 percentages, rounded to 4 decimals). Sums to ~1.0. Gives the step-5 LLM granularity beyond just the dominant label |
+
+Frames where DeepFace detects no face are **skipped** (not included in the array) — the pipeline never crashes on a face-less frame. On the demo video (~15 min) this yields ~90 frames.
+
+> **Model:** DeepFace with `detector_backend="retinaface"` and `actions=["emotion"]`. The default `opencv` detector backend is broken under `opencv-python` 5.x (haarcascade XMLs missing from `cv2/data/`), so retinaface is used instead. DeepFace returns scores as 0–100 percentages; the module normalizes to 0–1. See `docs/steps/step4-walkthrough.md` for the full implementation story, including the bugs found running on the real video.
+
 ## Re-running from a specific step
 
 Delete the output file for the step you want to re-run. `run.py` skips steps whose output already exists, so only the deleted step and everything after it will re-execute:

@@ -15,7 +15,7 @@ input/meeting.mp4
   → pipeline/01_transcribe.py      → output/transcript.json      (WhisperX large-v2 ✓ | pyannote diarization ✓ | merge speaker labels ✓)
   → pipeline/02_audio_features.py  → output/audio_features.json  (librosa: pitch mean/std, energy mean, speech rate, pause ratio, ZCR)
   → pipeline/03_emotion_voice.py   → output/voice_emotion.json   (audeering wav2vec2: valence, arousal, dominance per segment ✓)
-  → pipeline/04_emotion_face.py    → output/face_emotion.json    (DeepFace, sampled every 10s)
+  → pipeline/04_emotion_face.py    → output/face_emotion.json    (DeepFace retinaface, every 10s, scores normalized 0–1 ✓)
   → pipeline/05_llm_analysis.py    → output/analysis.json        (Claude API, run twice: transcript-only + multimodal)
   → pipeline/06_report.py          → output/report.html           (pure HTML + Chart.js via CDN)
 ```
@@ -31,6 +31,7 @@ The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they han
 - `pipeline/diarize.py` — `diarize_audio()` — pyannote speaker-diarization-3.1 wrapper
 - `pipeline/features.py` — `extract_audio_features()` — librosa pitch, energy, speech rate, pause ratio, ZCR per segment
 - `pipeline/emotion_voice.py` — `extract_voice_emotion()` — audeering wav2vec2 VAD per segment; reconstructs `Wav2Vec2ForSpeechClassification` head (class removed from modern transformers)
+- `pipeline/emotion_face.py` — `extract_face_emotion()` — DeepFace emotion per sampled frame (every 10s); retinaface detector, scores normalized 0–1, no-face frames skipped
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
 
@@ -57,6 +58,14 @@ The model is a **regression head** (`problem_type: "regression"`), not a classif
 
 Output order is `{0: arousal, 1: dominance, 2: valence}` per `config.json`. The output dict reorders to `{valence, arousal, dominance}` via `VALENCE_IDX=2`, `AROUSAL_IDX=0`, `DOMINANCE_IDX=1`. Getting this wrong silently mislabels every field.
 
+### DeepFace detector backend + score normalization (Step 4)
+
+`pipeline/emotion_face.py` sets `DETECTOR_BACKEND = "retinaface"` explicitly. DeepFace's default `opencv` detector backend needs the haarcascade XMLs in `cv2/data/`, but **`opencv-python` 5.x ships that directory empty** (only `__init__.py`), so the default backend raises `ValueError` on every frame — silently swallowed by the `except ValueError` (no-face handler) as "no face", producing 0 frames. retinaface is a deepface dependency and ships its own weights (auto-downloaded to `~/.deepface/weights/`).
+
+DeepFace returns emotion scores as **0–100 percentages**, not 0–1. `_shape_emotion_result` divides by 100 (then rounds to 4 decimals) to match the spec schema and step 3's VAD range. Getting this wrong feeds 0–100 values into the step-5 LLM prompt (written for 0–1).
+
+`cv2` and `deepface` are lazy-imported inside `_iter_frames`/`_analyze_frame` (same pattern as pyannote in `diarize.py`), so the module loads without TensorFlow and the 13 unit tests run dep-free (patching the seams / injecting a `sys.modules` fake).
+
 ## Project Structure
 
 ```
@@ -80,11 +89,13 @@ python -m pytest tests/test_transcribe.py -v    # single file
 python -m pytest tests/ -v -k "test_loads"      # single test by name
 ```
 
-50 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/emotion_voice.py` (extract_voice_emotion — 10 tests: 9 mocked + 1 integration with real model, skip-guarded if cache missing), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio), `pipeline/03_emotion_voice.py` subprocess guards (2 tests: missing segments, missing audio).
+68 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/emotion_voice.py` (extract_voice_emotion — 10 tests: 9 mocked + 1 integration with real model, skip-guarded if cache missing), `pipeline/emotion_face.py` (extract_face_emotion — 16 tests: 13 mocked/pure unit + 2 cv2 integration + 1 skip-guarded full DeepFace integration), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio), `pipeline/03_emotion_voice.py` subprocess guards (2 tests: missing segments, missing audio), `pipeline/04_emotion_face.py` subprocess guard (1 test: missing video).
 
 ## Key Design Decisions
 
 **Voice emotion model**: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim` — outputs valence, arousal, dominance (continuous 0–1) per segment. Better than training on RAVDESS for naturalistic speech. Regression head — no sigmoid; clip to [0,1]. Model outputs `[arousal, dominance, valence]` per config.json; the module reorders to `{valence, arousal, dominance}` in the output dict.
+
+**Facial emotion**: DeepFace with `detector_backend="retinaface"` (the default `opencv` backend is broken — `opencv-python` 5.x omits the haarcascade XMLs from `cv2/data/`, so it raises `ValueError` on every frame and the no-face handler swallows it → 0 frames). One frame every 10s via OpenCV seek. DeepFace returns 0–100 percentages; the module normalizes to 0–1 to match the spec and step 3's VAD range. Frames with no detected face are skipped (no crash).
 
 **Segment granularity**: Speaker turns from diarization, capped at 15 seconds. Longer turns split into 15s chunks. This gives natural speech units at consistent granularity for the emotion model.
 
@@ -159,6 +170,6 @@ HF_TOKEN=...                # HuggingFace token — required for pyannote diariz
 
 **voice_emotion.json**: Array of `{speaker, start, end, valence, arousal, dominance}` — one entry per segment (max 15s chunks).
 
-**face_emotion.json**: Array of `{timestamp, dominant_emotion, scores{}}` — one entry per 10s sample. Frames with no detected face are skipped (no crash).
+**face_emotion.json**: Array of `{timestamp, dominant_emotion, scores{}}` — one entry per 10s video sample. `scores` are 7 emotion probabilities normalized to 0–1 (DeepFace returns 0–100). Frames with no detected face are skipped (no crash).
 
 **analysis.json**: `{transcript_only: {...}, multimodal: {...}}` — both LLM outputs with engagement_score, deal_probability, critical_moments[], coaching_recommendations[], talk_ratio.
