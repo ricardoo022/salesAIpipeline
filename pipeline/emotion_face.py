@@ -12,6 +12,13 @@ not installed (mirrors the pyannote lazy-import pattern in pipeline/diarize.py).
 import os
 
 SAMPLE_INTERVAL = 10
+# DeepFace's default `opencv` detector backend needs the haarcascade XMLs in
+# cv2/data/, but opencv-python 5.x ships that dir empty (only __init__.py), so
+# the default backend raises ValueError on every frame — silently swallowed as
+# "no face" by the ValueError handler below. retinaface is a deepface dependency
+# and ships its own weights (auto-downloaded to ~/.deepface/weights), so it works
+# wherever deepface is installed.
+DETECTOR_BACKEND = "retinaface"
 
 
 def _shape_emotion_result(raw: dict) -> dict:
@@ -38,7 +45,9 @@ def _analyze_frame(frame) -> dict | None:
     """
     from deepface import DeepFace
     try:
-        raw = DeepFace.analyze(frame, actions=["emotion"], enforce_detection=True)
+        raw = DeepFace.analyze(
+            frame, actions=["emotion"], enforce_detection=True, detector_backend=DETECTOR_BACKEND
+        )
     except ValueError:
         return None
     return _shape_emotion_result(raw)

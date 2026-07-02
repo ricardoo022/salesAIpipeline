@@ -75,7 +75,9 @@ class TestAnalyzeFrame:
             _analyze_frame("frame")
         finally:
             del sys.modules["deepface"]
-        fake_df.DeepFace.analyze.assert_called_once_with("frame", actions=["emotion"], enforce_detection=True)
+        fake_df.DeepFace.analyze.assert_called_once_with(
+            "frame", actions=["emotion"], enforce_detection=True, detector_backend="retinaface"
+        )
 
 
 @pytest.mark.skipif(not _cv2_available(), reason="opencv-python not installed")
