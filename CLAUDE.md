@@ -14,7 +14,7 @@ Six sequential steps, each a standalone Python script. Output of each step is a 
 input/meeting.mp4
   → pipeline/01_transcribe.py      → output/transcript.json      (WhisperX large-v2 ✓ | pyannote diarization ✓ | merge speaker labels ✓)
   → pipeline/02_audio_features.py  → output/audio_features.json  (librosa: pitch mean/std, energy mean, speech rate, pause ratio, ZCR)
-  → pipeline/03_emotion_voice.py   → output/voice_emotion.json   (audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim)
+  → pipeline/03_emotion_voice.py   → output/voice_emotion.json   (audeering wav2vec2: valence, arousal, dominance per segment ✓)
   → pipeline/04_emotion_face.py    → output/face_emotion.json    (DeepFace, sampled every 10s)
   → pipeline/05_llm_analysis.py    → output/analysis.json        (Claude API, run twice: transcript-only + multimodal)
   → pipeline/06_report.py          → output/report.html           (pure HTML + Chart.js via CDN)
@@ -30,6 +30,7 @@ The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they han
 - `pipeline/transcribe.py` — `transcribe_audio()`, `merge_speaker_labels()` — WhisperX load + align; speaker label assignment by max time overlap
 - `pipeline/diarize.py` — `diarize_audio()` — pyannote speaker-diarization-3.1 wrapper
 - `pipeline/features.py` — `extract_audio_features()` — librosa pitch, energy, speech rate, pause ratio, ZCR per segment
+- `pipeline/emotion_voice.py` — `extract_voice_emotion()` — audeering wav2vec2 VAD per segment; reconstructs `Wav2Vec2ForSpeechClassification` head (class removed from modern transformers)
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
 
@@ -47,6 +48,14 @@ _mock_pyannote = MagicMock()
 sys.modules.setdefault("pyannote", _mock_pyannote)
 sys.modules.setdefault("pyannote.audio", _mock_pyannote)
 ```
+
+### audeering head reconstruction (Step 3)
+
+`pipeline/emotion_voice.py` reconstructs `Wav2Vec2ForSpeechClassification` + `Wav2Vec2ClassificationHead` as custom classes. The audeering model ships this head architecture (mean-pool hidden states → 2-layer MLP → regression), but the class was **removed from modern transformers** (4.57.6). Loading with stock `Wav2Vec2ForSequenceClassification` silently random-initializes the head (wrong weight names) and produces a flat-line output. The custom class matches the saved weight names (`classifier.dense`, `classifier.out_proj`) so `from_pretrained` loads the real trained weights.
+
+The model is a **regression head** (`problem_type: "regression"`), not a classifier. Do **not** apply `torch.sigmoid()` — outputs are VAD dimensions directly. Clip to [0,1] with `np.clip` instead.
+
+Output order is `{0: arousal, 1: dominance, 2: valence}` per `config.json`. The output dict reorders to `{valence, arousal, dominance}` via `VALENCE_IDX=2`, `AROUSAL_IDX=0`, `DOMINANCE_IDX=1`. Getting this wrong silently mislabels every field.
 
 ## Project Structure
 
@@ -71,11 +80,11 @@ python -m pytest tests/test_transcribe.py -v    # single file
 python -m pytest tests/ -v -k "test_loads"      # single test by name
 ```
 
-39 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio).
+50 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/emotion_voice.py` (extract_voice_emotion — 10 tests: 9 mocked + 1 integration with real model, skip-guarded if cache missing), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio), `pipeline/03_emotion_voice.py` subprocess guards (2 tests: missing segments, missing audio).
 
 ## Key Design Decisions
 
-**Voice emotion model**: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim` — outputs valence, arousal, dominance (continuous 0–1) per segment. Better than training on RAVDESS for naturalistic speech.
+**Voice emotion model**: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim` — outputs valence, arousal, dominance (continuous 0–1) per segment. Better than training on RAVDESS for naturalistic speech. Regression head — no sigmoid; clip to [0,1]. Model outputs `[arousal, dominance, valence]` per config.json; the module reorders to `{valence, arousal, dominance}` in the output dict.
 
 **Segment granularity**: Speaker turns from diarization, capped at 15 seconds. Longer turns split into 15s chunks. This gives natural speech units at consistent granularity for the emotion model.
 

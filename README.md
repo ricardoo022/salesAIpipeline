@@ -35,8 +35,15 @@ Sequential steps. Each reads JSON from the previous step and writes JSON for the
 ```
 input/meeting.mp4
   │
-  └─ 01_transcribe.py  → output/transcript.json   WhisperX + pyannote diarization
+  ├─ 01_transcribe.py      → output/transcript.json       WhisperX + pyannote diarization
+  ├─ 02_audio_features.py  → output/audio_features.json   librosa: pitch, energy, speech rate, pauses, ZCR
+  ├─ 03_emotion_voice.py   → output/voice_emotion.json    audeering wav2vec2: valence, arousal, dominance
+  ├─ 04_emotion_face.py    → output/face_emotion.json      DeepFace facial emotion (every 10s)
+  ├─ 05_llm_analysis.py    → output/analysis.json          Claude API (transcript-only + multimodal)
+  └─ 06_report.py          → output/report.html             self-contained HTML report
 ```
+
+`run.py` orchestrates all six steps sequentially, skipping any step whose output already exists.
 
 ---
 
@@ -80,5 +87,10 @@ python -m pytest tests/ -v
 |------|---------|
 | WhisperX | Word-level transcription + forced alignment |
 | pyannote.audio | Speaker diarization |
+| librosa | Audio feature extraction (pitch, energy, speech rate, pauses, ZCR) |
+| audeering wav2vec2 | Voice emotion: valence / arousal / dominance per segment |
+| DeepFace | Facial emotion per frame (sampled every 10s) |
+| Anthropic Claude API | LLM insights — transcript-only vs multimodal comparison |
+| Chart.js (CDN) | Engagement timeline chart in HTML report |
 | python-dotenv | `.env` loading |
 | yt-dlp | Demo video download |
