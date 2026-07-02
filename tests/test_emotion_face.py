@@ -1,10 +1,15 @@
 import importlib.util
+import os
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 
 def _cv2_available():
     return importlib.util.find_spec("cv2") is not None
+
+
+def _deepface_available():
+    return importlib.util.find_spec("deepface") is not None
 
 
 class TestShapeEmotionResult:
@@ -83,3 +88,90 @@ class TestIterFramesIntegration:
             pytest.skip("cv2 could not read back the synthetic video; codec unavailable")
         timestamps = [t for t, _ in _iter_frames(str(video), interval=1)]
         assert timestamps == [0.0, 1.0, 2.0, 3.0]
+
+
+class TestExtractFaceEmotion:
+    def test_raises_when_video_missing(self, tmp_path):
+        from pipeline.emotion_face import extract_face_emotion
+        with pytest.raises(FileNotFoundError, match="not found"):
+            extract_face_emotion(str(tmp_path / "nonexistent.mp4"))
+
+    def test_returns_one_record_per_detected_face(self, tmp_path):
+        from pipeline.emotion_face import extract_face_emotion
+        video = tmp_path / "video.mp4"
+        video.touch()
+        frames = [(0.0, "frame0"), (10.0, "frame1")]
+        analysis = {"dominant_emotion": "happy", "scores": {"happy": 0.9, "neutral": 0.1}}
+        with patch("pipeline.emotion_face._iter_frames", return_value=iter(frames)):
+            with patch("pipeline.emotion_face._analyze_frame", return_value=analysis):
+                result = extract_face_emotion(str(video))
+        assert len(result) == 2
+        assert result[0]["timestamp"] == 0.0
+        assert result[0]["dominant_emotion"] == "happy"
+        assert result[0]["scores"]["happy"] == 0.9
+
+    def test_skips_frames_with_no_face(self, tmp_path):
+        from pipeline.emotion_face import extract_face_emotion
+        video = tmp_path / "video.mp4"
+        video.touch()
+        frames = [(0.0, "f0"), (10.0, "f1"), (20.0, "f2")]
+
+        def fake_analyze(frame):
+            return None if frame == "f1" else {"dominant_emotion": "neutral", "scores": {"neutral": 1.0}}
+
+        with patch("pipeline.emotion_face._iter_frames", return_value=iter(frames)):
+            with patch("pipeline.emotion_face._analyze_frame", side_effect=fake_analyze):
+                result = extract_face_emotion(str(video))
+        assert len(result) == 2
+        assert [r["timestamp"] for r in result] == [0.0, 20.0]
+
+    def test_record_has_required_keys(self, tmp_path):
+        from pipeline.emotion_face import extract_face_emotion
+        video = tmp_path / "video.mp4"
+        video.touch()
+        frames = [(5.0, "f0")]
+        analysis = {"dominant_emotion": "surprise", "scores": {"surprise": 0.5, "neutral": 0.5}}
+        with patch("pipeline.emotion_face._iter_frames", return_value=iter(frames)):
+            with patch("pipeline.emotion_face._analyze_frame", return_value=analysis):
+                result = extract_face_emotion(str(video))
+        assert set(result[0].keys()) == {"timestamp", "dominant_emotion", "scores"}
+
+    def test_empty_video_returns_empty_list(self, tmp_path):
+        from pipeline.emotion_face import extract_face_emotion
+        video = tmp_path / "video.mp4"
+        video.touch()
+        with patch("pipeline.emotion_face._iter_frames", return_value=iter([])):
+            with patch("pipeline.emotion_face._analyze_frame") as mock_analyze:
+                result = extract_face_emotion(str(video))
+        assert result == []
+        mock_analyze.assert_not_called()
+
+    def test_timestamps_are_rounded_to_two_decimals(self, tmp_path):
+        from pipeline.emotion_face import extract_face_emotion
+        video = tmp_path / "video.mp4"
+        video.touch()
+        frames = [(10.123456, "f0")]
+        analysis = {"dominant_emotion": "neutral", "scores": {"neutral": 1.0}}
+        with patch("pipeline.emotion_face._iter_frames", return_value=iter(frames)):
+            with patch("pipeline.emotion_face._analyze_frame", return_value=analysis):
+                result = extract_face_emotion(str(video))
+        assert result[0]["timestamp"] == 10.12
+
+
+class TestExtractFaceEmotionIntegration:
+    @pytest.mark.skipif(
+        not _cv2_available()
+        or not _deepface_available()
+        or not os.path.exists("input/meeting.mp4")
+        or not os.path.exists(os.path.expanduser("~/.deepface/weights")),
+        reason="requires opencv-python, deepface, input/meeting.mp4, and downloaded DeepFace weights",
+    )
+    def test_with_real_meeting_video(self):
+        from pipeline.emotion_face import extract_face_emotion
+        result = extract_face_emotion("input/meeting.mp4", interval=10)
+        assert len(result) > 0
+        assert "dominant_emotion" in result[0]
+        assert "scores" in result[0]
+        assert "timestamp" in result[0]
+        dominant = result[0]["dominant_emotion"]
+        assert 0 <= result[0]["scores"][dominant] <= 1

@@ -14,7 +14,7 @@ import os
 SAMPLE_INTERVAL = 10
 
 
-def _shape_emotion_result(raw):
+def _shape_emotion_result(raw: dict) -> dict:
     """Normalize a DeepFace emotion analysis result into our output shape.
 
     DeepFace.analyze returns either a dict or a list of dicts (one per face);
@@ -29,7 +29,7 @@ def _shape_emotion_result(raw):
     return {"dominant_emotion": dominant, "scores": scores}
 
 
-def _analyze_frame(frame):
+def _analyze_frame(frame) -> dict | None:
     """Run DeepFace emotion analysis on a single frame.
 
     Returns {dominant_emotion, scores} or None if no face is detected.
@@ -44,7 +44,7 @@ def _analyze_frame(frame):
     return _shape_emotion_result(raw)
 
 
-def _iter_frames(video_path, interval=SAMPLE_INTERVAL):
+def _iter_frames(video_path: str, interval: int = SAMPLE_INTERVAL):
     """Yield (timestamp_seconds, frame_ndarray) pairs sampled every `interval` seconds.
 
     Seeks by frame index (CAP_PROP_POS_FRAMES) for speed on long meeting
@@ -68,3 +68,26 @@ def _iter_frames(video_path, interval=SAMPLE_INTERVAL):
             timestamp += interval
     finally:
         cap.release()
+
+
+def extract_face_emotion(video_path: str, interval: int = SAMPLE_INTERVAL) -> list[dict]:
+    """Extract facial emotion for sampled frames of the meeting video.
+
+    Samples one frame every `interval` seconds, runs DeepFace on each, and
+    skips frames with no detected face (no crash). Returns a list of
+    {timestamp, dominant_emotion, scores} records.
+    """
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(f"Video file not found: {video_path}")
+    results = []
+    for timestamp, frame in _iter_frames(video_path, interval):
+        analysis = _analyze_frame(frame)
+        if analysis is None:
+            print(f"  ⚠ no face detected at {timestamp:.1f}s, skipping")
+            continue
+        results.append({
+            "timestamp": round(float(timestamp), 2),
+            "dominant_emotion": analysis["dominant_emotion"],
+            "scores": analysis["scores"],
+        })
+    return results
