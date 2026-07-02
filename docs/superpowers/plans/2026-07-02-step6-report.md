@@ -38,7 +38,7 @@
 
 **Files:** Create `pipeline/report.py`, Create `tests/test_report.py`
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 import json
@@ -93,12 +93,12 @@ class TestClassifySpeakers:
         assert result["SPEAKER_02"] == "OTHER"
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_report.py -v`
 Expected: ERROR — `ModuleNotFoundError: No module named 'pipeline.report'`.
 
-- [ ] **Step 3: Write the module scaffold + time helpers**
+- [x] **Step 3: Write the module scaffold + time helpers**
 
 Create `pipeline/report.py`:
 
@@ -148,12 +148,12 @@ def _classify_speakers(transcript):
     return mapping
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_report.py -v`
 Expected: 5 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/report.py tests/test_report.py
@@ -166,7 +166,7 @@ git commit -m "feat(step6): add report module scaffold with timestamp + speaker 
 
 **Files:** Modify `pipeline/report.py`, Modify `tests/test_report.py`
 
-- [ ] **Step 1: Write failing tests (append to `tests/test_report.py`)**
+- [x] **Step 1: Write failing tests (append to `tests/test_report.py`)**
 
 ```python
 class TestMeetingDuration:
@@ -197,12 +197,12 @@ class TestCountMissingFaceFrames:
         assert _count_missing_face_frames(face_emotion, duration=25, interval=10) == 0
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_report.py::TestMeetingDuration tests/test_report.py::TestCountMissingFaceFrames -v`
 Expected: ERROR — `ImportError: cannot import name '_meeting_duration'`.
 
-- [ ] **Step 3: Write the helpers (append to `pipeline/report.py`, after `_classify_speakers`)**
+- [x] **Step 3: Write the helpers (append to `pipeline/report.py`, after `_classify_speakers`)**
 
 ```python
 def _meeting_duration(transcript):
@@ -221,12 +221,12 @@ def _count_missing_face_frames(face_emotion, duration, interval=10):
     return max(0, expected - len(face_emotion))
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_report.py::TestMeetingDuration tests/test_report.py::TestCountMissingFaceFrames -v`
 Expected: 5 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/report.py tests/test_report.py
@@ -239,7 +239,7 @@ git commit -m "feat(step6): add meeting duration and missing-face-frame helpers"
 
 **Files:** Modify `pipeline/report.py`, Modify `tests/test_report.py`
 
-- [ ] **Step 1: Write failing tests (append to `tests/test_report.py`)**
+- [x] **Step 1: Write failing tests (append to `tests/test_report.py`)**
 
 ```python
 class TestBuildTimelineSeries:
@@ -275,12 +275,12 @@ class TestBuildTimelineSeries:
         assert result["prospect_valence"][0]["x"] == 12.46
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_report.py::TestBuildTimelineSeries -v`
 Expected: ERROR — `ImportError: cannot import name '_build_timeline_series'`.
 
-- [ ] **Step 3: Write the helper (append to `pipeline/report.py`, after `_count_missing_face_frames`)**
+- [x] **Step 3: Write the helper (append to `pipeline/report.py`, after `_count_missing_face_frames`)**
 
 ```python
 def _build_timeline_series(voice_emotion, speaker_map):
@@ -301,12 +301,12 @@ def _build_timeline_series(voice_emotion, speaker_map):
     return series
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_report.py::TestBuildTimelineSeries -v`
 Expected: 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/report.py tests/test_report.py
@@ -319,7 +319,7 @@ git commit -m "feat(step6): add engagement timeline series builder"
 
 **Files:** Modify `pipeline/report.py`, Modify `tests/test_report.py`
 
-- [ ] **Step 1: Write failing tests (append to `tests/test_report.py`)**
+- [x] **Step 1: Write failing tests (append to `tests/test_report.py`)**
 
 ```python
 class TestBuildMomentMarkers:
@@ -345,12 +345,12 @@ class TestBuildMomentMarkers:
         assert _build_moment_markers([]) == []
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_report.py::TestBuildMomentMarkers -v`
 Expected: ERROR — `ImportError: cannot import name '_build_moment_markers'`.
 
-- [ ] **Step 3: Write the helper (append to `pipeline/report.py`, after `_build_timeline_series`)**
+- [x] **Step 3: Write the helper (append to `pipeline/report.py`, after `_build_timeline_series`)**
 
 ```python
 def _build_moment_markers(critical_moments):
@@ -361,12 +361,12 @@ def _build_moment_markers(critical_moments):
     ]
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_report.py::TestBuildMomentMarkers -v`
 Expected: 3 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/report.py tests/test_report.py
@@ -379,7 +379,7 @@ git commit -m "feat(step6): add critical moment chart marker builder"
 
 **Files:** Modify `pipeline/report.py`, Modify `tests/test_report.py`
 
-- [ ] **Step 1: Write failing tests (append to `tests/test_report.py`)**
+- [x] **Step 1: Write failing tests (append to `tests/test_report.py`)**
 
 ```python
 class TestBuildComparison:
@@ -404,12 +404,12 @@ class TestBuildComparison:
         assert result["engagement_score"]["delta"] == -10
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_report.py::TestBuildComparison -v`
 Expected: ERROR — `ImportError: cannot import name '_build_comparison'`.
 
-- [ ] **Step 3: Write the helper (append to `pipeline/report.py`, after `_build_moment_markers`)**
+- [x] **Step 3: Write the helper (append to `pipeline/report.py`, after `_build_moment_markers`)**
 
 ```python
 def _build_comparison(analysis):
@@ -435,12 +435,12 @@ def _build_comparison(analysis):
     }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_report.py::TestBuildComparison -v`
 Expected: 2 PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add pipeline/report.py tests/test_report.py
@@ -453,7 +453,7 @@ git commit -m "feat(step6): add transcript-only vs multimodal comparison builder
 
 **Files:** Modify `pipeline/report.py`, Modify `tests/test_report.py`
 
-- [ ] **Step 1: Write failing tests (append to `tests/test_report.py`)**
+- [x] **Step 1: Write failing tests (append to `tests/test_report.py`)**
 
 ```python
 def _sample_inputs():
@@ -549,12 +549,12 @@ class TestRenderReport:
         assert "facial data unavailable" in html.lower()
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m pytest tests/test_report.py::TestRenderReport -v`
 Expected: ERROR — `ImportError: cannot import name 'render_report'`.
 
-- [ ] **Step 3: Write `render_report` (append to `pipeline/report.py`, after `_build_comparison`)**
+- [x] **Step 3: Write `render_report` (append to `pipeline/report.py`, after `_build_comparison`)**
 
 ```python
 def render_report(transcript, voice_emotion, face_emotion, analysis, meeting_title="Sales Meeting"):
@@ -705,17 +705,17 @@ new Chart(ctx, {{
     return html
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `python -m pytest tests/test_report.py::TestRenderReport -v`
 Expected: 9 PASS
 
-- [ ] **Step 5: Run the full module test file**
+- [x] **Step 5: Run the full module test file**
 
 Run: `python -m pytest tests/test_report.py -v`
 Expected: all tests PASS (5 + 5 + 3 + 3 + 2 + 9 = 27)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pipeline/report.py tests/test_report.py
@@ -728,7 +728,7 @@ git commit -m "feat(step6): add render_report HTML assembly"
 
 **Files:** Create `pipeline/06_report.py`, Create `tests/test_06_report.py`
 
-- [ ] **Step 1: Write the failing test + a stub script (honest RED)**
+- [x] **Step 1: Write the failing test + a stub script (honest RED)**
 
 Create `tests/test_06_report.py` (mirrors `tests/test_05_llm_analysis.py`):
 
@@ -785,12 +785,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `python -m pytest tests/test_06_report.py -v`
 Expected: both FAIL — the stub's `main()` does nothing (exits 0, writes no file).
 
-- [ ] **Step 3: Write the full CLI (replace the stub body of `main()`)**
+- [x] **Step 3: Write the full CLI (replace the stub body of `main()`)**
 
 Replace `pipeline/06_report.py` with:
 
@@ -856,17 +856,17 @@ if __name__ == "__main__":
 
 Note: `from report import render_report` is a bare import (script's own `pipeline/` dir is on `sys.path` when run directly), mirroring steps 3–5.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `python -m pytest tests/test_06_report.py -v`
 Expected: 2 PASS
 
-- [ ] **Step 5: Run the full test suite for regressions**
+- [x] **Step 5: Run the full test suite for regressions**
 
 Run: `python -m pytest tests/ -v`
 Expected: all previous tests PASS + new step-6 tests PASS. No regressions.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add pipeline/06_report.py tests/test_06_report.py
@@ -877,9 +877,9 @@ git commit -m "feat(step6): add CLI entry point for report generation"
 
 ## Final Verification
 
-- [ ] Confirm `run.py` already wires step 6 (`run.py` STEPS list, step `n=6`) — no change needed.
-- [ ] Run full suite: `python -m pytest tests/ -v`
-- [ ] End-to-end: since `output/transcript.json`, `output/voice_emotion.json`, `output/face_emotion.json`, `output/analysis.json` already exist on disk from prior steps, run `python pipeline/06_report.py` directly and inspect `output/report.html` opens and contains real data (engagement score, deal probability, critical moments, recommendations, timeline chart).
+- [x] Confirm `run.py` already wires step 6 (`run.py` STEPS list, step `n=6`) — no change needed.
+- [x] Run full suite: `python -m pytest tests/ -v`
+- [x] End-to-end: since `output/transcript.json`, `output/voice_emotion.json`, `output/face_emotion.json`, `output/analysis.json` already exist on disk from prior steps, run `python pipeline/06_report.py` directly and inspect `output/report.html` opens and contains real data (engagement score, deal probability, critical moments, recommendations, timeline chart).
 
 ---
 
