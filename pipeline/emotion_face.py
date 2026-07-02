@@ -42,3 +42,29 @@ def _analyze_frame(frame):
     except ValueError:
         return None
     return _shape_emotion_result(raw)
+
+
+def _iter_frames(video_path, interval=SAMPLE_INTERVAL):
+    """Yield (timestamp_seconds, frame_ndarray) pairs sampled every `interval` seconds.
+
+    Seeks by frame index (CAP_PROP_POS_FRAMES) for speed on long meeting
+    videos. Videos cv2 cannot parse (fps=0 or no frames) yield nothing.
+    """
+    import cv2
+    cap = cv2.VideoCapture(video_path)
+    try:
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if not fps or total_frames <= 0:
+            return
+        duration = total_frames / fps
+        timestamp = 0.0
+        while timestamp < duration:
+            frame_idx = int(timestamp * fps)
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+            ret, frame = cap.read()
+            if ret:
+                yield timestamp, frame
+            timestamp += interval
+    finally:
+        cap.release()

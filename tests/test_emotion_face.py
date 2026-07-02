@@ -1,5 +1,10 @@
+import importlib.util
 import pytest
 from unittest.mock import MagicMock
+
+
+def _cv2_available():
+    return importlib.util.find_spec("cv2") is not None
 
 
 class TestShapeEmotionResult:
@@ -52,3 +57,29 @@ class TestAnalyzeFrame:
             del sys.modules["deepface"]
         assert result["dominant_emotion"] == "happy"
         assert result["scores"]["happy"] == 0.9
+
+
+@pytest.mark.skipif(not _cv2_available(), reason="opencv-python not installed")
+class TestIterFramesIntegration:
+    def test_invalid_video_yields_nothing(self, tmp_path):
+        from pipeline.emotion_face import _iter_frames
+        assert list(_iter_frames(str(tmp_path / "nope.mp4"))) == []
+
+    def test_samples_frames_at_interval(self, tmp_path):
+        import cv2
+        import numpy as np
+        from pipeline.emotion_face import _iter_frames
+        video = tmp_path / "synthetic.mp4"
+        fps = 10
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(video), fourcc, fps, (64, 64))
+        for _ in range(35):  # 3.5s of video at 10fps
+            writer.write(np.zeros((64, 64, 3), dtype=np.uint8))
+        writer.release()
+        cap = cv2.VideoCapture(str(video))
+        readback = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        cap.release()
+        if readback <= 0:
+            pytest.skip("cv2 could not read back the synthetic video; codec unavailable")
+        timestamps = [t for t, _ in _iter_frames(str(video), interval=1)]
+        assert timestamps == [0.0, 1.0, 2.0, 3.0]
