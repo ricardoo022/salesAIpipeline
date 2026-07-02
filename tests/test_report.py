@@ -76,3 +76,36 @@ class TestCountMissingFaceFrames:
         from pipeline.report import _count_missing_face_frames
         face_emotion = [{"timestamp": t} for t in (0.0, 10.0, 20.0, 30.0, 40.0)]
         assert _count_missing_face_frames(face_emotion, duration=25, interval=10) == 0
+
+
+class TestBuildTimelineSeries:
+    def test_splits_by_role_and_metric(self):
+        from pipeline.report import _build_timeline_series
+        voice_emotion = [
+            {"speaker": "SPEAKER_00", "start": 0, "end": 5, "valence": 0.5, "arousal": 0.4, "dominance": 0.3},
+            {"speaker": "SPEAKER_01", "start": 5, "end": 10, "valence": 0.6, "arousal": 0.7, "dominance": 0.2},
+        ]
+        speaker_map = {"SPEAKER_00": "REP", "SPEAKER_01": "PROSPECT"}
+        result = _build_timeline_series(voice_emotion, speaker_map)
+        assert result["prospect_valence"] == [{"x": 5, "y": 0.6}]
+        assert result["prospect_arousal"] == [{"x": 5, "y": 0.7}]
+        assert result["rep_arousal"] == [{"x": 0, "y": 0.4}]
+
+    def test_ignores_other_speakers(self):
+        from pipeline.report import _build_timeline_series
+        voice_emotion = [
+            {"speaker": "SPEAKER_02", "start": 0, "end": 5, "valence": 0.5, "arousal": 0.4, "dominance": 0.3},
+        ]
+        speaker_map = {"SPEAKER_02": "OTHER"}
+        result = _build_timeline_series(voice_emotion, speaker_map)
+        assert result["prospect_valence"] == []
+        assert result["rep_arousal"] == []
+
+    def test_x_is_segment_start_rounded(self):
+        from pipeline.report import _build_timeline_series
+        voice_emotion = [
+            {"speaker": "SPEAKER_00", "start": 12.456, "end": 15, "valence": 0.5, "arousal": 0.4, "dominance": 0.3},
+        ]
+        speaker_map = {"SPEAKER_00": "PROSPECT"}
+        result = _build_timeline_series(voice_emotion, speaker_map)
+        assert result["prospect_valence"][0]["x"] == 12.46

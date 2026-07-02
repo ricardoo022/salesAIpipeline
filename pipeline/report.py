@@ -57,3 +57,21 @@ def _count_missing_face_frames(face_emotion, duration, interval=10):
     """
     expected = int(duration // interval) + 1
     return max(0, expected - len(face_emotion))
+
+
+def _build_timeline_series(voice_emotion, speaker_map):
+    """Shape voice_emotion into the three Chart.js series the spec calls for:
+    Prospect Valence, Prospect Arousal, Rep Arousal (labelled "Rep Energy" in UI).
+
+    x = segment start time (seconds, rounded to 2dp); y = the metric value.
+    """
+    series = {"prospect_valence": [], "prospect_arousal": [], "rep_arousal": []}
+    for seg in voice_emotion:
+        role = speaker_map.get(seg.get("speaker", ""), "OTHER")
+        x = round(seg.get("start", 0), 2)
+        if role == "PROSPECT":
+            series["prospect_valence"].append({"x": x, "y": seg["valence"]})
+            series["prospect_arousal"].append({"x": x, "y": seg["arousal"]})
+        elif role == "REP":
+            series["rep_arousal"].append({"x": x, "y": seg["arousal"]})
+    return series
