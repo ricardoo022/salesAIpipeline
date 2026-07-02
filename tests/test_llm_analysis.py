@@ -182,3 +182,99 @@ class TestMergeSegments:
         merged = _merge_segments(t, [], [], [], {"SPEAKER_00": "REP"})
         assert "audio" not in merged[0]
         assert "voice" not in merged[0]
+
+
+class TestSystemPrompt:
+    def test_includes_signal_interpretation_guide(self):
+        from pipeline.llm_analysis import SYSTEM_PROMPT
+        assert "valence" in SYSTEM_PROMPT
+        assert "arousal" in SYSTEM_PROMPT
+        assert "dominance" in SYSTEM_PROMPT
+
+    def test_instructs_dissonance_surfacing(self):
+        from pipeline.llm_analysis import SYSTEM_PROMPT
+        assert "dissonance" in SYSTEM_PROMPT.lower()
+
+    def test_requires_timestamps(self):
+        from pipeline.llm_analysis import SYSTEM_PROMPT
+        assert "timestamp" in SYSTEM_PROMPT.lower()
+
+
+class TestAnalysisTool:
+    def test_forces_required_fields(self):
+        from pipeline.llm_analysis import ANALYSIS_TOOL
+        required = ANALYSIS_TOOL["input_schema"]["required"]
+        assert set(required) == {
+            "engagement_score", "deal_probability",
+            "critical_moments", "recommendations",
+        }
+
+    def test_critical_moments_has_coaching(self):
+        from pipeline.llm_analysis import ANALYSIS_TOOL
+        cm = ANALYSIS_TOOL["input_schema"]["properties"]["critical_moments"]["items"]
+        assert "coaching" in cm["required"]
+        assert "timestamp" in cm["required"]
+
+    def test_tool_name(self):
+        from pipeline.llm_analysis import ANALYSIS_TOOL
+        assert ANALYSIS_TOOL["name"] == "submit_analysis"
+
+
+class TestBuildTranscriptPrompt:
+    def _merged(self):
+        return [{
+            "speaker": "PROSPECT", "start": 12.4, "end": 18.1,
+            "text": "I'm not sure the pricing makes sense.",
+            "audio": {"pitch_mean": 180, "pitch_std": 24, "energy_mean": 0.04,
+                      "speech_rate": 3.2, "pause_ratio": 0.18, "zcr": 0.06},
+            "voice": {"valence": 0.31, "arousal": 0.22, "dominance": 0.41},
+            "face": {"dominant_emotion": "neutral", "scores": {"neutral": 0.71}},
+        }]
+
+    def test_includes_speaker_and_text(self):
+        from pipeline.llm_analysis import _build_transcript_prompt
+        prompt = _build_transcript_prompt(self._merged())
+        assert "PROSPECT" in prompt
+        assert "I'm not sure the pricing makes sense." in prompt
+
+    def test_includes_timestamp(self):
+        from pipeline.llm_analysis import _build_transcript_prompt
+        prompt = _build_transcript_prompt(self._merged())
+        assert "00:00:12" in prompt
+
+    def test_excludes_modalities(self):
+        from pipeline.llm_analysis import _build_transcript_prompt
+        prompt = _build_transcript_prompt(self._merged())
+        assert "Audio:" not in prompt
+        assert "Voice emotion:" not in prompt
+        assert "Facial:" not in prompt
+
+
+class TestBuildMultimodalPrompt:
+    def _merged(self):
+        return [{
+            "speaker": "PROSPECT", "start": 12.4, "end": 18.1,
+            "text": "I'm not sure the pricing makes sense.",
+            "audio": {"pitch_mean": 180, "pitch_std": 24, "energy_mean": 0.04,
+                      "speech_rate": 3.2, "pause_ratio": 0.18, "zcr": 0.06},
+            "voice": {"valence": 0.31, "arousal": 0.22, "dominance": 0.41},
+            "face": {"dominant_emotion": "neutral", "scores": {"neutral": 0.71}},
+        }]
+
+    def test_includes_all_modalities(self):
+        from pipeline.llm_analysis import _build_multimodal_prompt
+        prompt = _build_multimodal_prompt(self._merged())
+        assert "Audio:" in prompt
+        assert "Voice emotion:" in prompt
+        assert "Facial:" in prompt
+
+    def test_includes_signal_values(self):
+        from pipeline.llm_analysis import _build_multimodal_prompt
+        prompt = _build_multimodal_prompt(self._merged())
+        assert "0.31" in prompt  # valence
+        assert "neutral" in prompt
+
+    def test_includes_dissonance_instruction(self):
+        from pipeline.llm_analysis import _build_multimodal_prompt
+        prompt = _build_multimodal_prompt(self._merged())
+        assert "dissonance" in prompt.lower()

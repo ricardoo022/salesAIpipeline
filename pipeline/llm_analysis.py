@@ -135,3 +135,112 @@ def _merge_segments(
             }
         merged.append(item)
     return merged
+
+
+SYSTEM_PROMPT = """You are a senior B2B sales coach analyzing a recorded sales meeting.
+
+Read the meeting segment-by-segment and produce a structured analysis: an
+engagement score (0-100), a deal probability (0-100), the critical moments
+(each with a timestamp, a type, a description of what happened, and a coaching
+note), and actionable coaching recommendations.
+
+Rules:
+- Be specific and concrete. Cite exact timestamps and signal values.
+- No generic advice. Every recommendation must reference something that
+  actually happened in this meeting.
+- Timestamps must use HH:MM:SS and match moments in the provided segments.
+
+How to read the voice/face signals (multimodal mode only):
+- valence < 0.4 = negative affect; > 0.6 = positive.
+- arousal > 0.6 = energized/agitated; < 0.4 = flat/disengaged.
+- dominance rising in the prospect = pushback or an objection forming.
+- When the words say one thing but the voice/face say another, that
+  dissonance is the most important signal -- surface it as a critical moment
+  with the timestamp and the conflicting signal values.
+"""
+
+
+ANALYSIS_TOOL = {
+    "name": "submit_analysis",
+    "description": "Submit the structured sales-meeting analysis.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "engagement_score": {"type": "integer"},
+            "deal_probability": {"type": "integer"},
+            "critical_moments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "timestamp": {"type": "string"},
+                        "type": {"type": "string"},
+                        "description": {"type": "string"},
+                        "coaching": {"type": "string"},
+                    },
+                    "required": ["timestamp", "type", "description", "coaching"],
+                },
+            },
+            "recommendations": {"type": "array", "items": {"type": "string"}},
+        },
+        "required": [
+            "engagement_score",
+            "deal_probability",
+            "critical_moments",
+            "recommendations",
+        ],
+    },
+}
+
+
+def _build_transcript_prompt(merged: list[dict]) -> str:
+    """Transcript-only user message: speaker role + text + timing per segment.
+
+    No audio/voice/face -- the honest 'what a transcript gives you' baseline.
+    The contrast with the multimodal call IS the demo's pitch.
+    """
+    lines = ["TRANSCRIPT (speaker-labeled; no audio/voice/face signals):", ""]
+    for seg in merged:
+        ts = _format_timestamp(seg["start"])
+        lines.append(f"[{ts}] {seg['speaker']}: {seg['text']}")
+    lines.append("")
+    lines.append("Analyze this transcript and submit your analysis via the submit_analysis tool.")
+    return "\n".join(lines)
+
+
+def _build_multimodal_prompt(merged: list[dict]) -> str:
+    """Multimodal user message: full per-segment blocks with audio/voice/face."""
+    lines = [
+        "MEETING (transcript + audio + voice emotion + facial emotion per segment):",
+        "",
+    ]
+    for seg in merged:
+        ts = _format_timestamp(seg["start"])
+        lines.append(f"SEGMENT [{ts}]")
+        lines.append(f"Speaker: {seg['speaker']}")
+        lines.append(f"Text: {seg['text']}")
+        a = seg.get("audio")
+        if a:
+            lines.append(
+                f"Audio: pitch_mean={a['pitch_mean']} pitch_std={a['pitch_std']} "
+                f"energy={a['energy_mean']} speech_rate={a['speech_rate']} "
+                f"pause_ratio={a['pause_ratio']} zcr={a['zcr']}"
+            )
+        v = seg.get("voice")
+        if v:
+            lines.append(
+                f"Voice emotion: valence={v['valence']} arousal={v['arousal']} "
+                f"dominance={v['dominance']}"
+            )
+        f = seg.get("face")
+        if f:
+            lines.append(
+                f"Facial: {f['dominant_emotion']} (dominant), scores={f['scores']}"
+            )
+        lines.append("")
+    lines.append("Analyze this meeting and submit your analysis via the submit_analysis tool.")
+    lines.append(
+        "Surface moments where the words and the voice/face disagree -- "
+        "that dissonance is the key signal transcript-only analysis cannot see."
+    )
+    return "\n".join(lines)
