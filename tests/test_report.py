@@ -132,3 +132,25 @@ class TestBuildMomentMarkers:
     def test_empty_list_returns_empty(self):
         from pipeline.report import _build_moment_markers
         assert _build_moment_markers([]) == []
+
+
+class TestBuildComparison:
+    def test_computes_deltas(self):
+        from pipeline.report import _build_comparison
+        analysis = {
+            "transcript_only": {"engagement_score": 61, "deal_probability": 45, "talk_ratio": {"rep": 62, "prospect": 38}},
+            "multimodal": {"engagement_score": 74, "deal_probability": 68, "talk_ratio": {"rep": 62, "prospect": 38}},
+        }
+        result = _build_comparison(analysis)
+        assert result["engagement_score"] == {"transcript_only": 61, "multimodal": 74, "delta": 13}
+        assert result["deal_probability"] == {"transcript_only": 45, "multimodal": 68, "delta": 23}
+        assert result["talk_ratio"] == {"rep": 62, "prospect": 38}
+
+    def test_negative_delta(self):
+        from pipeline.report import _build_comparison
+        analysis = {
+            "transcript_only": {"engagement_score": 80, "deal_probability": 50, "talk_ratio": {"rep": 50, "prospect": 50}},
+            "multimodal": {"engagement_score": 70, "deal_probability": 50, "talk_ratio": {"rep": 50, "prospect": 50}},
+        }
+        result = _build_comparison(analysis)
+        assert result["engagement_score"]["delta"] == -10

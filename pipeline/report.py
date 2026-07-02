@@ -83,3 +83,26 @@ def _build_moment_markers(critical_moments):
         {"x": _parse_timestamp(m["timestamp"]), "timestamp": m["timestamp"], "type": m["type"]}
         for m in critical_moments
     ]
+
+
+def _build_comparison(analysis):
+    """Hero + side-by-side comparison data: transcript-only vs multimodal, with deltas.
+
+    talk_ratio is identical in both modes (deterministic, see CLAUDE.md), so it
+    is reported once rather than duplicated per mode.
+    """
+    t = analysis["transcript_only"]
+    m = analysis["multimodal"]
+    return {
+        "engagement_score": {
+            "transcript_only": t["engagement_score"],
+            "multimodal": m["engagement_score"],
+            "delta": m["engagement_score"] - t["engagement_score"],
+        },
+        "deal_probability": {
+            "transcript_only": t["deal_probability"],
+            "multimodal": m["deal_probability"],
+            "delta": m["deal_probability"] - t["deal_probability"],
+        },
+        "talk_ratio": m["talk_ratio"],
+    }
