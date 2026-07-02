@@ -63,6 +63,20 @@ class TestAnalyzeFrame:
         assert result["dominant_emotion"] == "happy"
         assert result["scores"]["happy"] == 0.9
 
+    def test_enforces_face_detection(self):
+        import sys
+        fake_df = MagicMock()
+        fake_df.DeepFace.analyze.return_value = [
+            {"dominant_emotion": "happy", "emotion": {"happy": 0.9, "neutral": 0.1}}
+        ]
+        sys.modules["deepface"] = fake_df
+        try:
+            from pipeline.emotion_face import _analyze_frame
+            _analyze_frame("frame")
+        finally:
+            del sys.modules["deepface"]
+        fake_df.DeepFace.analyze.assert_called_once_with("frame", actions=["emotion"], enforce_detection=True)
+
 
 @pytest.mark.skipif(not _cv2_available(), reason="opencv-python not installed")
 class TestIterFramesIntegration:
