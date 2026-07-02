@@ -22,8 +22,8 @@ input/
 pipeline/
   01_transcribe.py      → output/transcript.json   [x] complete (WhisperX + pyannote + speaker merge)
   02_audio_features.py  → output/audio_features.json   [x] complete (librosa: pitch, energy, speech rate, pauses, ZCR)
-  03_emotion_voice.py   → output/voice_emotion.json
-  04_emotion_face.py    → output/face_emotion.json
+  03_emotion_voice.py   → output/voice_emotion.json   [x] complete (audeering wav2vec2: valence, arousal, dominance per segment)
+  04_emotion_face.py    → output/face_emotion.json   [x] complete (DeepFace retinaface, every 10s, scores normalized 0–1)
   05_llm_analysis.py    → output/analysis.json
   06_report.py          → output/report.html
 
@@ -32,7 +32,7 @@ models/
 run.py                                        [x] orchestrator working
 requirements.txt                              [x] all deps installed in venv
 .env                                          [x] .env.example created
-tests/                                        [x] pytest suite (39 tests)
+tests/                                        [x] pytest suite (68 tests)
 ```
 
 Force re-run from a specific step by deleting its output file:
@@ -94,10 +94,10 @@ rm output/analysis.json && python run.py  # re-runs steps 5 and 6 only
 
 ### Step 3 — Voice Emotion (`03_emotion_voice.py`)
 
-- Model: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`
-- Outputs: valence, arousal, dominance (continuous 0–1) per segment
-- Segments longer than 15 seconds are split into ≤15s chunks; chunk results averaged back to segment level
-- Model downloaded once and cached in `models/`
+- [x] Model: `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`
+- [x] Outputs: valence, arousal, dominance (continuous 0–1) per segment
+- [x] Segments longer than 15 seconds are split into ≤15s chunks; chunk results averaged back to segment level
+- [x] Model downloaded once and cached in `models/`
 
 **Output schema:**
 ```json
@@ -122,9 +122,9 @@ rm output/analysis.json && python run.py  # re-runs steps 5 and 6 only
 
 ### Step 4 — Facial Emotion (`04_emotion_face.py`)
 
-- Sample one frame every 10 seconds from `meeting.mp4` via OpenCV
-- Run DeepFace on each frame
-- If no face detected: skip frame, log warning, continue (no crash)
+- [x] Sample one frame every 10 seconds from `meeting.mp4` via OpenCV
+- [x] Run DeepFace on each frame
+- [x] If no face detected: skip frame, log warning, continue (no crash)
 
 **Output schema:**
 ```json
