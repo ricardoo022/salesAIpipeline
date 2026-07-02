@@ -476,3 +476,37 @@ class TestRunAnalysis:
                 str(out / "analysis.json"),
                 api_key=None,
             )
+
+
+class TestRunAnalysisIntegration:
+    @pytest.mark.skipif(
+        not _anthropic_available()
+        or not os.path.exists("output/transcript.json")
+        or not os.path.exists("output/audio_features.json")
+        or not os.path.exists("output/voice_emotion.json")
+        or not os.path.exists("output/face_emotion.json"),
+        reason="requires anthropic SDK + all four upstream output JSONs",
+    )
+    def test_with_real_outputs(self, tmp_path):
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            pytest.skip("ANTHROPIC_API_KEY not set")
+        from pipeline.llm_analysis import run_analysis
+        out = tmp_path / "analysis.json"
+        result = run_analysis(
+            "output/transcript.json",
+            "output/audio_features.json",
+            "output/voice_emotion.json",
+            "output/face_emotion.json",
+            str(out),
+            api_key=api_key,
+        )
+        assert set(result.keys()) == {"transcript_only", "multimodal"}
+        for mode in ("transcript_only", "multimodal"):
+            assert 0 <= result[mode]["engagement_score"] <= 100
+            assert 0 <= result[mode]["deal_probability"] <= 100
+            assert "talk_ratio" in result[mode]
+            assert isinstance(result[mode]["critical_moments"], list)
+            assert isinstance(result[mode]["recommendations"], list)
