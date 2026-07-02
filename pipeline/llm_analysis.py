@@ -282,3 +282,51 @@ def _call_claude(user_prompt: str, api_key: str) -> dict:
         time.sleep(RATE_LIMIT_WAIT)
         response = _create_message(client, user_prompt)
     return _extract_tool_input(response)
+
+
+def run_analysis(
+    transcript_path: str = TRANSCRIPT_FILE,
+    audio_features_path: str = AUDIO_FEATURES_FILE,
+    voice_emotion_path: str = VOICE_EMOTION_FILE,
+    face_emotion_path: str = FACE_EMOTION_FILE,
+    output_path: str = OUTPUT_FILE,
+    api_key: str = None,
+) -> dict:
+    """Run both LLM analyses (transcript-only + multimodal) and write analysis.json.
+
+    Loads the four upstream JSONs, projects them into compact per-segment blocks,
+    calls Claude twice with different prompts, injects the measured talk_ratio
+    into both outputs, and writes {transcript_only, multimodal} to disk.
+    """
+    for p in (transcript_path, audio_features_path, voice_emotion_path, face_emotion_path):
+        if not os.path.exists(p):
+            raise FileNotFoundError(f"Required input not found: {p}")
+    if not api_key:
+        raise ValueError("ANTHROPIC_API_KEY is required")
+
+    with open(transcript_path) as f:
+        transcript = json.load(f)
+    with open(audio_features_path) as f:
+        audio_features = json.load(f)
+    with open(voice_emotion_path) as f:
+        voice_emotion = json.load(f)
+    with open(face_emotion_path) as f:
+        face_emotion = json.load(f)
+
+    speaker_map = _classify_speakers(transcript)
+    talk_ratio = _compute_talk_ratio(transcript, speaker_map)
+    merged = _merge_segments(
+        transcript, audio_features, voice_emotion, face_emotion, speaker_map
+    )
+
+    transcript_llm = _call_claude(_build_transcript_prompt(merged), api_key)
+    multimodal_llm = _call_claude(_build_multimodal_prompt(merged), api_key)
+
+    analysis = {
+        "transcript_only": {**transcript_llm, "talk_ratio": talk_ratio},
+        "multimodal": {**multimodal_llm, "talk_ratio": talk_ratio},
+    }
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(analysis, f, indent=2)
+    return analysis

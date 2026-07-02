@@ -372,3 +372,107 @@ class TestCallClaude:
         finally:
             del sys.modules["anthropic"]
         fake.Anthropic.assert_called_once_with(api_key="secret-key")
+
+
+class TestRunAnalysis:
+    def _write_inputs(self, tmp_path):
+        out = tmp_path / "output"
+        out.mkdir()
+        transcript = [{"speaker": "SPEAKER_00", "start": 0.0, "end": 60.0, "text": " Hi "}]
+        audio = [{"pitch_mean": 180, "pitch_std": 12, "energy_mean": 0.05,
+                  "speech_rate": 3.0, "pause_ratio": 0.1, "zcr": 0.08}]
+        voice = [{"valence": 0.4, "arousal": 0.5, "dominance": 0.6}]
+        face = [{"timestamp": 30.0, "dominant_emotion": "neutral",
+                 "scores": {"neutral": 1.0}}]
+        for name, data in (("transcript.json", transcript),
+                           ("audio_features.json", audio),
+                           ("voice_emotion.json", voice),
+                           ("face_emotion.json", face)):
+            (out / name).write_text(json.dumps(data))
+        return out
+
+    def test_writes_analysis_json_with_both_modes(self, tmp_path):
+        out = self._write_inputs(tmp_path)
+        output_file = out / "analysis.json"
+        llm_out = {"engagement_score": 70, "deal_probability": 50,
+                   "critical_moments": [], "recommendations": ["x"]}
+        with patch("pipeline.llm_analysis._call_claude", return_value=dict(llm_out)):
+            from pipeline.llm_analysis import run_analysis
+            run_analysis(
+                str(out / "transcript.json"),
+                str(out / "audio_features.json"),
+                str(out / "voice_emotion.json"),
+                str(out / "face_emotion.json"),
+                str(output_file),
+                api_key="key",
+            )
+        saved = json.loads(output_file.read_text())
+        assert set(saved.keys()) == {"transcript_only", "multimodal"}
+        assert saved["transcript_only"]["engagement_score"] == 70
+        assert saved["multimodal"]["engagement_score"] == 70
+
+    def test_injects_talk_ratio_into_both_modes(self, tmp_path):
+        out = self._write_inputs(tmp_path)
+        output_file = out / "analysis.json"
+        llm_out = {"engagement_score": 1, "deal_probability": 1,
+                   "critical_moments": [], "recommendations": []}
+        with patch("pipeline.llm_analysis._call_claude", return_value=dict(llm_out)):
+            from pipeline.llm_analysis import run_analysis
+            run_analysis(
+                str(out / "transcript.json"),
+                str(out / "audio_features.json"),
+                str(out / "voice_emotion.json"),
+                str(out / "face_emotion.json"),
+                str(output_file),
+                api_key="key",
+            )
+        saved = json.loads(output_file.read_text())
+        # single speaker -> REP gets 100% of rep+prospect talk time
+        assert saved["transcript_only"]["talk_ratio"] == {"rep": 100, "prospect": 0}
+        assert saved["multimodal"]["talk_ratio"] == {"rep": 100, "prospect": 0}
+
+    def test_calls_claude_twice_with_different_prompts(self, tmp_path):
+        out = self._write_inputs(tmp_path)
+        output_file = out / "analysis.json"
+        llm_out = {"engagement_score": 1, "deal_probability": 1,
+                   "critical_moments": [], "recommendations": []}
+        with patch("pipeline.llm_analysis._call_claude", return_value=dict(llm_out)) as mock:
+            from pipeline.llm_analysis import run_analysis
+            run_analysis(
+                str(out / "transcript.json"),
+                str(out / "audio_features.json"),
+                str(out / "voice_emotion.json"),
+                str(out / "face_emotion.json"),
+                str(output_file),
+                api_key="key",
+            )
+        assert mock.call_count == 2
+        first_prompt = mock.call_args_list[0].args[0]
+        second_prompt = mock.call_args_list[1].args[0]
+        assert "TRANSCRIPT" in first_prompt
+        assert "MEETING" in second_prompt
+
+    def test_raises_on_missing_input(self, tmp_path):
+        from pipeline.llm_analysis import run_analysis
+        with pytest.raises(FileNotFoundError, match="not found"):
+            run_analysis(
+                str(tmp_path / "nope.json"),
+                str(tmp_path / "nope2.json"),
+                str(tmp_path / "nope3.json"),
+                str(tmp_path / "nope4.json"),
+                str(tmp_path / "out.json"),
+                api_key="key",
+            )
+
+    def test_raises_when_api_key_missing(self, tmp_path):
+        out = self._write_inputs(tmp_path)
+        from pipeline.llm_analysis import run_analysis
+        with pytest.raises(ValueError, match="ANTHROPIC_API_KEY"):
+            run_analysis(
+                str(out / "transcript.json"),
+                str(out / "audio_features.json"),
+                str(out / "voice_emotion.json"),
+                str(out / "face_emotion.json"),
+                str(out / "analysis.json"),
+                api_key=None,
+            )
