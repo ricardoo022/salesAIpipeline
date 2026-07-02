@@ -62,3 +62,12 @@ WhisperX and pyannote run **in parallel on the same WAV** — WhisperX answers *
 > **Post-processing caveat:** This is a **regression head** (`problem_type: "regression"`), not a classifier. Do **not** apply `torch.sigmoid()` — outputs are VAD dimensions directly. Clip to [0,1] with `np.clip`. Applying sigmoid compresses all variation to a narrow band around 0.5, defeating the model.
 >
 > **Output order caveat:** Model returns `[arousal, dominance, valence]` per `config.json` (`id2label: {0: arousal, 1: dominance, 2: valence}`). The output dict reorders to `{valence, arousal, dominance}` via `VALENCE_IDX=2`, `AROUSAL_IDX=0`, `DOMINANCE_IDX=1`. Getting this wrong silently mislabels every field.
+
+### `emotion_face.py`
+`extract_face_emotion(video_path, interval=10)` — samples one frame every 10 seconds from the video via OpenCV (`_iter_frames`), runs DeepFace emotion analysis on each frame (`_analyze_frame`), and skips frames with no detected face (no crash). Returns a list of `{timestamp, dominant_emotion, scores}` where `scores` is a dict of 7 emotion probabilities normalized to 0–1.
+
+> **Detector backend caveat:** DeepFace's default `opencv` detector backend needs the haarcascade XMLs in `cv2/data/`, but `opencv-python` 5.x ships that directory empty (only `__init__.py`). The default backend raises `ValueError` on every frame, which the module's `except ValueError` (no-face handler) silently swallows as "no face" → 0 frames output. The module sets `DETECTOR_BACKEND = "retinaface"` (a deepface dependency that ships its own weights) to avoid this.
+>
+> **Score range caveat:** DeepFace returns emotion scores as **0–100 percentages**, not 0–1. `_shape_emotion_result` divides by 100 (then rounds to 4 decimals) to match the spec schema and the 0–1 range used by step 3 (voice emotion). Getting this wrong feeds 0–100 values into the step-5 LLM prompt (written for 0–1) and breaks step-6 chart axes.
+>
+> **Lazy imports:** `cv2` and `deepface` are imported *inside* the functions that need them (`_iter_frames`, `_analyze_frame`), not at module level — mirroring the pyannote pattern in `diarize.py`. This keeps the module import instant and lets the 13 unit tests run with neither cv2 nor deepface installed (they patch the seams / inject a `sys.modules` fake).
