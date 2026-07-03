@@ -85,6 +85,99 @@ def _build_moment_markers(critical_moments):
     ]
 
 
+def _count_dissonance_moments(critical_moments):
+    """Count moments the LLM tagged as words-vs-tone/face mismatches.
+
+    The multimodal prompt (pipeline/llm_analysis.py's _build_multimodal_prompt)
+    explicitly instructs the model to surface these as "Dissonance" moments --
+    the one category transcript-only analysis structurally cannot produce,
+    since it has no voice/face signal to contrast against the words.
+    """
+    return sum(1 for m in critical_moments if "dissonance" in m["type"].lower())
+
+
+def _select_dissonance_examples(critical_moments, limit=2):
+    """Pick the first `limit` dissonance-type moments, in chronological order."""
+    return [m for m in critical_moments if "dissonance" in m["type"].lower()][:limit]
+
+
+def _nearest_entry(items, timestamp, time_key="start"):
+    """Find the item whose time range contains `timestamp`, else the closest by start.
+
+    Generic lookup used to pull the real transcript quote / voice reading /
+    face reading nearest a critical moment's timestamp, straight from the
+    upstream JSONs -- not from the LLM's paraphrased description.
+    """
+    if not items:
+        return None
+    for item in items:
+        if "end" in item and item[time_key] <= timestamp <= item["end"]:
+            return item
+    return min(items, key=lambda item: abs(item[time_key] - timestamp))
+
+
+def _describe_tone(valence):
+    """Translate a raw valence float into a plain-language, percentage-first label."""
+    pct = round(valence * 100)
+    if valence > 0.55:
+        label = "positive"
+    elif valence < 0.45:
+        label = "negative"
+    else:
+        label = "neutral"
+    return f"{pct}% {label}"
+
+
+def _describe_face(face_frame):
+    """Format the dominant facial emotion as a plain percentage, e.g. '97% sad'."""
+    dominant = face_frame["dominant_emotion"]
+    pct = round(face_frame["scores"][dominant] * 100)
+    return f"{pct}% {dominant}"
+
+
+def _face_sentiment(face_frame):
+    """Map a facial reading to a 0-1 sentiment scale, comparable to voice valence.
+
+    happy -> its own score (positive); sad/angry/fear/disgust -> inverted score
+    (negative); neutral/surprise -> 0.5 (no signal either way).
+    """
+    dominant = face_frame["dominant_emotion"]
+    score = face_frame["scores"][dominant]
+    if dominant == "happy":
+        return score
+    if dominant in ("sad", "angry", "fear", "disgust"):
+        return 1 - score
+    return 0.5
+
+
+def _build_proof_examples(critical_moments, transcript, voice_emotion, face_emotion, limit=2):
+    """Numbers-first proof points: real quote + measured voice tone + measured face,
+    for the `limit` dissonance-type moments with the starkest words-vs-signal gap.
+
+    Deliberately pulls from the raw upstream JSONs (not the LLM's prose
+    description) so the proof is the actual measured data, not narrative text.
+    Ranked by contradiction strength (not chronological order) so the proof
+    leads with its most persuasive evidence.
+    """
+    candidates = []
+    for moment in _select_dissonance_examples(critical_moments, limit=len(critical_moments)):
+        t = _parse_timestamp(moment["timestamp"])
+        quote_seg = _nearest_entry(transcript, t, time_key="start")
+        voice_seg = _nearest_entry(voice_emotion, t, time_key="start")
+        face_frame = _nearest_entry(face_emotion, t, time_key="timestamp")
+        if quote_seg is None or voice_seg is None or face_frame is None:
+            continue
+        contradiction = abs(voice_seg["valence"] - _face_sentiment(face_frame))
+        candidates.append((contradiction, {
+            "timestamp": moment["timestamp"],
+            "quote": quote_seg["text"],
+            "tone": _describe_tone(voice_seg["valence"]),
+            "face": _describe_face(face_frame),
+        }))
+    candidates.sort(key=lambda c: c[0], reverse=True)
+    return [example for _, example in candidates[:limit]]
+
+
 def _build_comparison(analysis):
     """Hero + side-by-side comparison data: transcript-only vs multimodal, with deltas.
 
@@ -105,6 +198,10 @@ def _build_comparison(analysis):
             "delta": m["deal_probability"] - t["deal_probability"],
         },
         "talk_ratio": m["talk_ratio"],
+        "dissonance_moments": {
+            "transcript_only": _count_dissonance_moments(t["critical_moments"]),
+            "multimodal": _count_dissonance_moments(m["critical_moments"]),
+        },
     }
 
 
@@ -123,6 +220,9 @@ def render_report(transcript, voice_emotion, face_emotion, analysis, meeting_tit
     timeline = _build_timeline_series(voice_emotion, speaker_map)
     markers = _build_moment_markers(analysis["multimodal"]["critical_moments"])
     comparison = _build_comparison(analysis)
+    proof_examples = _build_proof_examples(
+        analysis["multimodal"]["critical_moments"], transcript, voice_emotion, face_emotion
+    )
 
     report_data = json.dumps({"timeline": timeline, "moment_markers": markers})
 
@@ -152,6 +252,26 @@ def render_report(transcript, voice_emotion, face_emotion, analysis, meeting_tit
     def insight_cards(recs, weight_class):
         return "".join(f'<div class="insight-card {weight_class}">{esc(r)}</div>' for r in recs[:4])
 
+    def proof_cards(examples):
+        return "\n".join(
+            f"""<div class="proof-card">
+  <div class="proof-timestamp">[{esc(ex['timestamp'])}]</div>
+  <div class="proof-quote">&ldquo;{esc(ex['quote'])}&rdquo;</div>
+  <div class="proof-readout"><span>Voice: {esc(ex['tone'])}</span><span>Face: {esc(ex['face'])}</span></div>
+</div>"""
+            for ex in examples
+        )
+
+    proof_section = (
+        f"""<section class="proof">
+  <h2>{comparison['dissonance_moments']['multimodal']} moments a transcript alone would have missed</h2>
+  <p class="proof-subhead">Reading tone of voice and facial expression caught mismatches words alone could not.</p>
+  {proof_cards(proof_examples)}
+</section>"""
+        if proof_examples
+        else ""
+    )
+
     face_note = (
         f'<p class="face-note">facial data unavailable for {missing_faces} frame(s)</p>'
         if missing_faces > 0
@@ -179,6 +299,15 @@ def render_report(transcript, voice_emotion, face_emotion, analysis, meeting_tit
   .insight-card {{ background: #17171f; border-radius: 8px; padding: 14px; margin-bottom: 10px; }}
   .insight-card.thin {{ padding: 8px 14px; font-size: 0.85rem; color: #9a9aa5; }}
   .insight-card.heavy {{ padding: 18px; font-size: 1rem; border-left: 3px solid #6366f1; }}
+  .hero-card.hidden-signals {{ border: 1px solid #6366f1; }}
+  .hero-card.hidden-signals .value {{ color: #818cf8; }}
+  .hero-card.hidden-signals .caption {{ font-size: 0.8rem; color: #9a9aa5; margin-top: 4px; }}
+  .proof {{ margin: 32px 0; }}
+  .proof-subhead {{ color: #9a9aa5; margin-top: -8px; }}
+  .proof-card {{ background: #17171f; border-left: 3px solid #6366f1; border-radius: 8px; padding: 16px; margin-bottom: 12px; }}
+  .proof-timestamp {{ color: #6366f1; font-weight: 600; font-size: 0.85rem; }}
+  .proof-quote {{ font-size: 1.1rem; margin: 6px 0; }}
+  .proof-readout {{ display: flex; gap: 16px; font-weight: 600; }}
   .moment-card {{ background: #17171f; border-radius: 8px; padding: 16px; margin-bottom: 12px; }}
   .moment-timestamp {{ color: #6366f1; font-weight: 600; }}
   .face-note {{ color: #9a9aa5; font-size: 0.85rem; }}
@@ -196,7 +325,10 @@ def render_report(transcript, voice_emotion, face_emotion, analysis, meeting_tit
   <div class="hero-card"><div class="label">Deal Probability</div><div class="value">{m['deal_probability']}</div></div>
   <div class="hero-card"><div class="label">Talk Ratio</div><div class="value">{comparison['talk_ratio']['rep']}/{comparison['talk_ratio']['prospect']}</div></div>
   <div class="hero-card"><div class="label">Duration</div><div class="value">{esc(_format_timestamp(duration))}</div></div>
+  <div class="hero-card hidden-signals"><div class="label">Signals a Transcript Would Miss</div><div class="value">{comparison['dissonance_moments']['multimodal']}</div><div class="caption">transcript-only caught {comparison['dissonance_moments']['transcript_only']}</div></div>
 </section>
+
+{proof_section}
 
 <section class="comparison">
   <div class="comparison-col transcript-only">
