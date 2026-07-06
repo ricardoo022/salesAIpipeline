@@ -249,22 +249,33 @@ class TestNearestEntry:
 class TestDescribeTone:
     def test_positive_valence(self):
         from pipeline.report import _describe_tone
-        assert _describe_tone(0.85) == "85% positive"
+        assert _describe_tone(0.85) == "85% positivo"
 
     def test_negative_valence(self):
         from pipeline.report import _describe_tone
-        assert _describe_tone(0.10) == "10% negative"
+        assert _describe_tone(0.10) == "10% negativo"
 
     def test_neutral_valence(self):
         from pipeline.report import _describe_tone
-        assert _describe_tone(0.50) == "50% neutral"
+        assert _describe_tone(0.50) == "50% neutro"
 
 
 class TestDescribeFace:
     def test_formats_dominant_emotion_as_percentage(self):
         from pipeline.report import _describe_face
         frame = {"dominant_emotion": "sad", "scores": {"sad": 0.971, "neutral": 0.02}}
-        assert _describe_face(frame) == "97% sad"
+        assert _describe_face(frame) == "97% triste"
+
+    def test_translates_every_face_category(self):
+        from pipeline.report import _describe_face
+        cases = {
+            "happy": "feliz", "sad": "triste", "angry": "zangado",
+            "neutral": "neutro", "surprise": "surpreendido",
+            "fear": "com medo", "disgust": "com nojo",
+        }
+        for emotion, label in cases.items():
+            frame = {"dominant_emotion": emotion, "scores": {emotion: 0.5}}
+            assert _describe_face(frame) == f"50% {label}"
 
 
 class TestFaceSentiment:
@@ -291,12 +302,14 @@ class TestBuildProofExamples:
         voice_emotion = [{"speaker": "SPEAKER_01", "start": 742.8, "end": 744.0, "valence": 0.8545, "arousal": 0.59, "dominance": 0.64}]
         face_emotion = [{"timestamp": 740.0, "dominant_emotion": "sad", "scores": {"sad": 0.9709, "neutral": 0.008}}]
         result = _build_proof_examples(critical_moments, transcript, voice_emotion, face_emotion)
-        assert result == [{
-            "timestamp": "00:12:23",
-            "quote": "No, it looks great.",
-            "tone": "85% positive",
-            "face": "97% sad",
-        }]
+        assert len(result) == 1
+        example = result[0]
+        assert example["timestamp"] == "00:12:23"
+        assert example["quote"] == "No, it looks great."
+        assert example["tone"] == "85% positivo"
+        assert example["face"] == "97% triste"
+        assert example["arousal"] == 59
+        assert example["dominance"] == 64
 
     def test_respects_limit(self):
         from pipeline.report import _build_proof_examples
@@ -309,6 +322,18 @@ class TestBuildProofExamples:
         face_emotion = [{"timestamp": i * 60, "dominant_emotion": "neutral", "scores": {"neutral": 0.9}} for i in range(5)]
         result = _build_proof_examples(critical_moments, transcript, voice_emotion, face_emotion, limit=2)
         assert len(result) == 2
+
+    def test_default_limit_is_three(self):
+        from pipeline.report import _build_proof_examples
+        critical_moments = [
+            {"timestamp": f"00:0{i}:00", "type": "Dissonance – X", "description": "", "coaching": ""}
+            for i in range(5)
+        ]
+        transcript = [{"speaker": "SPEAKER_01", "start": i * 60, "end": i * 60 + 1, "text": f"quote {i}"} for i in range(5)]
+        voice_emotion = [{"speaker": "SPEAKER_01", "start": i * 60, "end": i * 60 + 1, "valence": 0.5, "arousal": 0.5, "dominance": 0.5} for i in range(5)]
+        face_emotion = [{"timestamp": i * 60, "dominant_emotion": "neutral", "scores": {"neutral": 0.9}} for i in range(5)]
+        result = _build_proof_examples(critical_moments, transcript, voice_emotion, face_emotion)
+        assert len(result) == 3
 
     def test_empty_when_no_dissonance_moments(self):
         from pipeline.report import _build_proof_examples
@@ -341,12 +366,141 @@ class TestBuildProofExamples:
             {"timestamp": 120.0, "dominant_emotion": "sad", "scores": {"sad": 0.9}},
         ]
         result = _build_proof_examples(critical_moments, transcript, voice_emotion, face_emotion, limit=1)
-        assert result == [{
-            "timestamp": "00:02:00",
-            "quote": "strong mismatch",
-            "tone": "90% positive",
-            "face": "90% sad",
-        }]
+        assert len(result) == 1
+        assert result[0]["timestamp"] == "00:02:00"
+        assert result[0]["quote"] == "strong mismatch"
+        assert result[0]["tone"] == "90% positivo"
+        assert result[0]["face"] == "90% triste"
+
+
+class TestProsodyByRole:
+    def test_averages_per_role(self):
+        from pipeline.report import _prosody_by_role
+        audio_features = [
+            {"speaker": "SPEAKER_00", "pitch_mean": 100, "pitch_std": 10, "energy_mean": 0.05, "speech_rate": 4.0, "pause_ratio": 0.2, "zcr": 0.1},
+            {"speaker": "SPEAKER_00", "pitch_mean": 200, "pitch_std": 20, "energy_mean": 0.06, "speech_rate": 4.4, "pause_ratio": 0.3, "zcr": 0.12},
+            {"speaker": "SPEAKER_01", "pitch_mean": 300, "pitch_std": 90, "energy_mean": 0.04, "speech_rate": 3.0, "pause_ratio": 0.25, "zcr": 0.15},
+        ]
+        speaker_map = {"SPEAKER_00": "REP", "SPEAKER_01": "PROSPECT"}
+        result = _prosody_by_role(audio_features, speaker_map)
+        assert result["REP"]["pitch_mean"] == 150
+        assert result["PROSPECT"]["pitch_mean"] == 300
+
+    def test_ignores_other_role(self):
+        from pipeline.report import _prosody_by_role
+        audio_features = [
+            {"speaker": "SPEAKER_02", "pitch_mean": 999, "pitch_std": 0, "energy_mean": 0, "speech_rate": 0, "pause_ratio": 0, "zcr": 0},
+        ]
+        speaker_map = {"SPEAKER_02": "OTHER"}
+        result = _prosody_by_role(audio_features, speaker_map)
+        assert result["REP"]["pitch_mean"] == 0
+        assert result["PROSPECT"]["pitch_mean"] == 0
+
+    def test_empty_input_returns_zeros(self):
+        from pipeline.report import _prosody_by_role
+        result = _prosody_by_role([], {})
+        assert result["REP"]["pitch_mean"] == 0
+        assert result["PROSPECT"]["zcr"] == 0
+
+
+class TestVadByRole:
+    def test_averages_per_role(self):
+        from pipeline.report import _vad_by_role
+        voice_emotion = [
+            {"speaker": "SPEAKER_00", "valence": 0.4, "arousal": 0.5, "dominance": 0.6},
+            {"speaker": "SPEAKER_00", "valence": 0.6, "arousal": 0.5, "dominance": 0.6},
+            {"speaker": "SPEAKER_01", "valence": 0.2, "arousal": 0.7, "dominance": 0.7},
+        ]
+        speaker_map = {"SPEAKER_00": "REP", "SPEAKER_01": "PROSPECT"}
+        result = _vad_by_role(voice_emotion, speaker_map)
+        assert result["REP"]["valence"] == 0.5
+        assert result["PROSPECT"]["valence"] == 0.2
+
+
+class TestCompareRoleStat:
+    def test_prospect_higher(self):
+        from pipeline.report import _compare_role_stat
+        result = _compare_role_stat(
+            20.0, 80.0, "{:.1f}",
+            prospect_higher="prospect {ratio}x maior ({prospect} vs {rep})",
+            rep_higher="rep {ratio}x maior ({rep} vs {prospect})",
+            similar="parecido ({rep} vs {prospect})",
+        )
+        assert result == "prospect 4.0x maior (80.0 vs 20.0)"
+
+    def test_rep_higher(self):
+        from pipeline.report import _compare_role_stat
+        result = _compare_role_stat(
+            80.0, 20.0, "{:.1f}",
+            prospect_higher="prospect maior",
+            rep_higher="rep {ratio}x maior ({rep} vs {prospect})",
+            similar="parecido",
+        )
+        assert result == "rep 4.0x maior (80.0 vs 20.0)"
+
+    def test_similar_within_threshold(self):
+        from pipeline.report import _compare_role_stat
+        result = _compare_role_stat(
+            100.0, 105.0, "{:.0f}",
+            prospect_higher="prospect maior",
+            rep_higher="rep maior",
+            similar="parecido ({rep} vs {prospect})",
+        )
+        assert result == "parecido (100 vs 105)"
+
+    def test_zero_low_value_does_not_crash(self):
+        from pipeline.report import _compare_role_stat
+        result = _compare_role_stat(
+            0.0, 5.0, "{:.1f}",
+            prospect_higher="prospect maior ({prospect} vs {rep})",
+            rep_higher="rep maior",
+            similar="parecido",
+        )
+        assert result == "prospect maior (5.0 vs 0.0)"
+
+
+class TestFaceEmotionDistribution:
+    def test_counts_and_percentages(self):
+        from pipeline.report import _face_emotion_distribution
+        face_emotion = [
+            {"dominant_emotion": "neutral"}, {"dominant_emotion": "neutral"},
+            {"dominant_emotion": "sad"}, {"dominant_emotion": "happy"},
+        ]
+        result = _face_emotion_distribution(face_emotion)
+        assert result["total"] == 4
+        assert result["counts"]["neutral"] == 2
+        assert result["percentages"]["neutral"] == 50
+        assert result["counts"]["angry"] == 0
+        assert result["percentages"]["fear"] == 0
+
+    def test_empty_input(self):
+        from pipeline.report import _face_emotion_distribution
+        result = _face_emotion_distribution([])
+        assert result["total"] == 0
+        assert all(p == 0 for p in result["percentages"].values())
+
+
+class TestMomentTag:
+    def test_dissonance(self):
+        from pipeline.report import _moment_tag
+        assert _moment_tag("Dissonance – Verbal/Facial Mismatch") == ("dissonance", "Contradição")
+
+    def test_buying_signal(self):
+        from pipeline.report import _moment_tag
+        assert _moment_tag("Buying Signal – Pain Articulated") == ("buying", "Sinal de Compra")
+
+    def test_risk_or_objection(self):
+        from pipeline.report import _moment_tag
+        assert _moment_tag("Critical Risk – Negative Affect Spike") == ("risk", "Risco/Objeção")
+        assert _moment_tag("Critical Objection – Trust") == ("risk", "Risco/Objeção")
+
+    def test_close(self):
+        from pipeline.report import _moment_tag
+        assert _moment_tag("Close – Soft Commitment Obtained") == ("close", "Fecho")
+
+    def test_falls_back_to_other(self):
+        from pipeline.report import _moment_tag
+        assert _moment_tag("Something Unclassified") == ("other", "Outro")
 
 
 def _sample_inputs():
@@ -354,6 +508,11 @@ def _sample_inputs():
         {"speaker": "SPEAKER_00", "start": 0, "end": 600, "text": "rep talking"},
         {"speaker": "SPEAKER_01", "start": 600, "end": 742.8, "text": "prospect talking"},
         {"speaker": "SPEAKER_01", "start": 742.8, "end": 900, "text": "No, it looks great."},
+    ]
+    audio_features = [
+        {"speaker": "SPEAKER_00", "start": 0, "end": 600, "pitch_mean": 170, "pitch_std": 20, "energy_mean": 0.05, "speech_rate": 4.0, "pause_ratio": 0.2, "zcr": 0.1},
+        {"speaker": "SPEAKER_01", "start": 600, "end": 742.8, "pitch_mean": 260, "pitch_std": 80, "energy_mean": 0.05, "speech_rate": 3.0, "pause_ratio": 0.25, "zcr": 0.15},
+        {"speaker": "SPEAKER_01", "start": 742.8, "end": 900, "pitch_mean": 260, "pitch_std": 80, "energy_mean": 0.05, "speech_rate": 3.0, "pause_ratio": 0.25, "zcr": 0.15},
     ]
     voice_emotion = [
         {"speaker": "SPEAKER_00", "start": 0, "end": 5, "valence": 0.5, "arousal": 0.4, "dominance": 0.3},
@@ -388,7 +547,7 @@ def _sample_inputs():
             "recommendations": ["Pause after pricing to let discomfort surface.", "Mirror the prospect's pace."],
         },
     }
-    return transcript, voice_emotion, face_emotion, analysis
+    return transcript, audio_features, voice_emotion, face_emotion, analysis
 
 
 class TestRenderReport:
@@ -445,29 +604,62 @@ class TestRenderReport:
 
     def test_handles_missing_face_data_gracefully(self):
         from pipeline.report import render_report
-        transcript, voice_emotion, face_emotion, analysis = _sample_inputs()
-        html = render_report(transcript, voice_emotion, [], analysis)
-        assert "facial data unavailable" in html.lower()
+        transcript, audio_features, voice_emotion, face_emotion, analysis = _sample_inputs()
+        html = render_report(transcript, audio_features, voice_emotion, [], analysis)
+        assert "dados faciais indispon" in html.lower()
 
     def test_includes_hidden_signals_hero_stat(self):
         from pipeline.report import render_report
         html = render_report(*_sample_inputs())
-        assert "1" in html  # one dissonance-type moment in the multimodal fixture
-        assert "missed" in html.lower() or "hidden" in html.lower()
+        assert "Contradições Detetadas" in html
+        assert ">1<" in html  # one dissonance-type moment in the multimodal fixture
 
     def test_includes_proof_example_from_dissonance_moment(self):
         from pipeline.report import render_report
         html = render_report(*_sample_inputs())
         assert "No, it looks great." in html
-        assert "85% positive" in html
-        assert "97% sad" in html
+        assert "85%" in html
+        assert "97%" in html
         assert "00:12:23" in html
 
     def test_no_proof_section_when_no_dissonance_moments(self):
         from pipeline.report import render_report
-        transcript, voice_emotion, face_emotion, analysis = _sample_inputs()
+        transcript, audio_features, voice_emotion, face_emotion, analysis = _sample_inputs()
         analysis["multimodal"]["critical_moments"] = [
             {"timestamp": "00:10:00", "type": "pricing_objection", "description": "d", "coaching": "c"},
         ]
-        html = render_report(transcript, voice_emotion, face_emotion, analysis)
+        html = render_report(transcript, audio_features, voice_emotion, face_emotion, analysis)
         assert html  # renders without crashing when there are zero dissonance moments
+
+    def test_includes_signal_glossary(self):
+        from pipeline.report import render_report
+        html = render_report(*_sample_inputs())
+        assert "Pitch Mean" in html
+        assert "Pitch Std" in html
+        assert "Energy Mean" in html
+        assert "Speech Rate" in html
+        assert "Pause Ratio" in html
+        assert "ZCR" in html
+        assert "Valência" in html
+        assert "Arousal" in html
+        assert "Dominance" in html
+
+    def test_includes_mechanism_strip_with_real_counts(self):
+        from pipeline.report import render_report
+        html = render_report(*_sample_inputs())
+        assert "3 segmentos" in html  # len(transcript) and len(audio_features)
+        assert "3 leituras" in html  # len(voice_emotion)
+        assert "2 leituras" in html  # len(face_emotion)
+
+    def test_includes_face_emotion_distribution(self):
+        from pipeline.report import render_report
+        html = render_report(*_sample_inputs())
+        assert "Rosto Neutro" in html
+        assert "Rosto Triste" in html
+
+    def test_is_portuguese(self):
+        from pipeline.report import render_report
+        html = render_report(*_sample_inputs())
+        assert 'lang="pt-PT"' in html
+        assert "Recomendações" in html
+        assert "Probabilidade de Fecho" in html

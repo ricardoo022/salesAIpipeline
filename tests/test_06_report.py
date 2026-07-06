@@ -20,6 +20,7 @@ def test_writes_report_html(tmp_path):
     out = tmp_path / "output"
     out.mkdir()
     (out / "transcript.json").write_text('[{"speaker": "SPEAKER_00", "start": 0, "end": 5, "text": "hi"}]')
+    (out / "audio_features.json").write_text('[]')
     (out / "voice_emotion.json").write_text('[]')
     (out / "face_emotion.json").write_text('[]')
     (out / "analysis.json").write_text(
