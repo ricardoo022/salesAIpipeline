@@ -129,6 +129,14 @@ preserves speaker/timestamps/exact text/word timestamps, and does not modify
 `output/transcript.json`. Oversized segments are split only at complete word
 boundaries; pieces retain the original `segment_id` and record `piece_index`,
 `word_start`, and `word_end`. Word metadata is recursively immutable.
+US-1.4 adds a `ResolvedChunk` contract to `schemas.py` (frozen `chunk`/
+`section`/`segments` triple) and a resolution API to `chunking.py`:
+`resolve_chunk()` resolves one `ExtractionChunk` to its parent
+`ConversationSection` and ordered source `TranscriptSegment`s, raising
+`ChunkHierarchyError` on any broken reference; `reconstruct_chunk_text()`
+rebuilds a chunk's text from those resolved segments and must equal the
+chunk's own `text` byte-for-byte; `iter_chunks_for_processing()` returns
+every chunk unfiltered, in original order.
 Coverage validation (`CoverageRecord`, US-1.5) is not yet implemented.
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
