@@ -18,6 +18,21 @@ within a section share overlap made of complete trailing turns. Each section's
 `chunk_ids` is populated with its own chunks' IDs. Chunk coverage validation
 remains planned work.
 
+US-1.4 adds a chunk-hierarchy resolution API to `chunking.py` (implemented in
+a parallel task, merging alongside this documentation): `resolve_chunk(chunk_id,
+chunks, sections, segments)` resolves one `ExtractionChunk` back to its parent
+`ConversationSection` and the ordered source `TranscriptSegment`s it was built
+from, returning a `ResolvedChunk` (the frozen `chunk`/`section`/`segments`
+dataclass added to `schemas.py`), and raises `ChunkHierarchyError` on any
+broken or missing reference — an unknown `chunk_id`, a missing parent section,
+a section whose `chunk_ids` does not list the chunk, or a resolved segment
+count that does not match the chunk's `segment_ids`. `reconstruct_chunk_text()`
+rebuilds a chunk's rendered text purely from `resolved.segments` and is
+expected to equal the chunk's own `text` byte-for-byte for any chunk
+`create_chunks` produces. `iter_chunks_for_processing()` returns every chunk
+unfiltered, in original order, making explicit that Epic 1 processes the full
+chunk set rather than a retrieved subset.
+
 Planned responsibilities:
 
 - Chunk coverage validation
