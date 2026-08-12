@@ -127,6 +127,12 @@ are split only at complete word boundaries; pieces retain the original
 metadata is recursively immutable. Extraction chunks and coverage validation
 are not yet implemented.
 
+**Tagging convention:** the single annotated tag `crm-deal-qualification`
+anchors the entire qualification subsystem — all Epics 1–5, past and future.
+Never create per-story or per-epic tags for this project part. Every
+qualification branch is cut from a commit that contains this tag, so every
+qualification PR descends from it.
+
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
 
 Qualification tests are separated under `tests/qualification/unit/` and
