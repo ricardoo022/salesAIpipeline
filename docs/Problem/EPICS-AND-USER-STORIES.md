@@ -244,6 +244,18 @@ at least one section.
 
 ### US-1.3: Create Bounded Extraction Chunks
 
+**Status: Done**
+
+Implemented by `pipeline/qualification/chunking.py` (`create_chunks`) and the
+`ExtractionChunk` schema in `pipeline/qualification/schemas.py`, covered by
+unit and integration tests in `tests/qualification/`. Chunking runs per
+section: segments are grouped into speaker turns and greedily packed under
+`max_chunk_tokens`, falling back to segment-level packing only when a single
+turn alone exceeds the limit; neighboring chunks within a section overlap by
+up to `chunk_overlap_turns` complete trailing turns bounded by
+`max_overlap_tokens`, with the nearest turn always kept intact. Each
+section's `chunk_ids` is populated from the chunks generated for it.
+
 **As a BANT topic agent,** I want bounded chunks made from complete transcript segments and speaker turns, **so that** I can process manageable context without losing meaning.
 
 **Acceptance criteria:**
