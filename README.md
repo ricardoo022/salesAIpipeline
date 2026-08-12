@@ -47,6 +47,34 @@ input/meeting.mp4
 
 ---
 
+## Planned BANT Evidence Extraction
+
+The planned qualification subsystem runs after the six analysis steps. It
+extracts Budget, Authority, Need, and Timeline evidence from the existing
+transcript and links the existing audio, voice, and facial measurements. It
+does not decide whether a lead qualifies and does not rerun signal analysis.
+
+Epic 1 uses deterministic, custom Python chunking rather than vector search:
+
+```text
+transcript segments
+  -> chronological sections
+  -> bounded overlapping chunks
+  -> four topic agents
+  -> grounded BANT evidence
+```
+
+Chunks contain rendered speaker-labeled text for the LLM plus stable source
+segment IDs for traceability. Sections use approximate time windows, chunks use
+a token limit, and overlap keeps complete speaker turns. Candidate
+configurations are compared with manually reviewed question-answer cases
+before selecting a strategy.
+
+See `docs/Problem/EPICS-AND-USER-STORIES.md` for the schemas, acceptance
+criteria, and evaluation plan.
+
+---
+
 ## Environment Variables
 
 Create a `.env` file at the project root:
@@ -78,6 +106,11 @@ docs/        Design specs and project documentation
 source venv/bin/activate
 python -m pytest tests/ -v
 ```
+
+Pull requests also run `.github/workflows/ci.yml`. The workflow uses `uv` and
+runs only tests under `tests/qualification/`, including unit and future
+qualification integration tests. It does not run the real model pipeline
+behind steps `01` through `06`.
 
 ---
 

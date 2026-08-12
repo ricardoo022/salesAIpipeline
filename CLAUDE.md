@@ -41,7 +41,86 @@ The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they han
 - `pipeline/llm_analysis.py` — `run_analysis()` — merges the 4 upstream JSONs, calls Claude twice (transcript-only + multimodal) with forced tool-use; deterministic talk_ratio; lazy-imports anthropic
 - `pipeline/report.py` — `render_report(transcript, audio_features, voice_emotion, face_emotion, analysis, meeting_title=...)` — assembles the self-contained HTML string; pure stdlib (`json` + string building), no lazy imports needed. Data-shaping helpers (`_build_timeline_series`, `_build_comparison`, `_build_proof_examples`, `_prosody_by_role`, `_vad_by_role`, `_face_emotion_distribution`, `_compare_role_stat`, `_moment_tag`, etc.) are the testable seams. Report copy is European Portuguese, written for a non-technical sales audience (see "Signal glossary" below); the LLM's own generated text (`critical_moments`, `recommendations`) is rendered verbatim in whatever language step 5 produced it in, same treatment as transcript quotes.
 
+### BANT evidence extraction (planned)
+
+The next backend feature is a separate qualification subsystem. It extracts Budget, Authority, Need, and Timeline evidence from an already-processed transcript and links the existing audio, voice, and facial measurements to each evidence moment. It does **not** decide whether a lead qualifies, apply company-specific KPIs, or interpret the measurements.
+
+Planned structure:
+
+```
+pipeline/07_qualification.py          # CLI entry point
+pipeline/qualification/
+├── graph.py                          # harness workflow
+├── state.py                          # run state
+├── schemas.py                        # chunks and evidence shapes
+├── chunking.py                       # hierarchical transcript chunks
+├── grounding.py                      # source and quote validation
+├── assembly.py                       # merge and deduplicate evidence
+├── signals.py                        # link existing measurements
+├── storage.py                        # intermediate run artifacts
+└── agents/
+    ├── budget.py
+    ├── authority.py
+    ├── need.py
+    └── timeline.py
+```
+
+The harness uses four parallel topic agents. Each agent scans the complete hierarchical transcript, extracts all relevant evidence for its topic, and validates the extraction against the original transcript. A deterministic assembler combines the four topic outputs, preserving cross-topic evidence when one statement is relevant to more than one BANT field. Signal linking happens afterward and reuses existing JSON outputs; the signal pipeline is not run again.
+
+Only the transcript is chunked. It is organized into chronological parent sections and bounded child chunks made from complete transcript segments and speaker turns, with overlap and stable segment IDs. `audio_features.json`, `voice_emotion.json`, and `face_emotion.json` remain timestamped measurement sources and are linked after extraction.
+
+#### Epic 1 chunking contract
+
+Epic 1 uses custom deterministic Python logic, not a vector database or a
+generic retrieval splitter. The qualification layer normalizes the existing
+transcript without modifying `output/transcript.json` and defines these data
+contracts:
+
+- `TranscriptSegment` — one immutable source utterance with `segment_id`, speaker, timestamps, exact text, and optional word timestamps.
+- `ConversationSection` — chronological parent grouping, normally containing both speakers, with intentional section overlap.
+- `ExtractionChunk` — bounded LLM input with rendered speaker-labeled text, timestamps, ordered segment IDs, parent section ID, and `token_count`.
+- `CoverageRecord` — proof that every source segment appears in at least one extraction chunk, with omissions and intentional shared context recorded separately.
+- `ChunkingConfiguration` — section target/overlap duration, maximum chunk tokens, complete-turn overlap target, overlap token target, and tokenizer identity.
+
+The initial strategy is conversation-aware hybrid: approximately 8-minute
+sections with 30 seconds of section overlap; chunks bounded at 1,200 tokens;
+and overlap of two complete speaker turns with a 250-token target. Time is for
+section organization, tokens are for LLM safety, and complete speaker turns
+are for chunk overlap. Normal transcript segments are never cut arbitrarily.
+
+Every chunk is processed. Vector search is explicitly not used to select a
+subset because Epic 1 requires complete transcript coverage. Candidate
+configurations are evaluated with manually reviewed `EvaluationQuestion`
+cases containing expected answers and required source segment IDs. Evaluation
+must measure evidence coverage, question-answer context sufficiency,
+extraction recall, grounding precision, token cost, and overlap duplication.
+
+Planned runtime artifacts are separate from source code:
+
+```
+output/qualification.json
+output/qualification_runs/<run_id>/
+├── manifest.json
+├── sections.jsonl
+├── chunks.jsonl
+├── budget_results.jsonl
+├── authority_results.jsonl
+├── need_results.jsonl
+├── timeline_results.jsonl
+├── validation.jsonl
+└── qualification.json
+```
+
+The design and user stories are documented in `docs/Problem/ARCHITECTURE.md`, `docs/Problem/HIERARCHICAL-CHUNKING.md`, `docs/Problem/HARNESS.md`, `docs/Problem/FOLDER-ARCHITECTURE.md`, and `docs/Problem/EPICS-AND-USER-STORIES.md`.
+
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
+
+Qualification tests are separated under `tests/qualification/unit/` and
+`tests/qualification/integration/`. Unit tests cover schemas and individual
+qualification boundaries. Integration tests use fixture JSON outputs and a
+fake LLM boundary to exercise the qualification flow without running pipeline
+steps `01` through `06` or calling external APIs. GitHub Actions runs only
+these qualification tests through `uv` on pushes and pull requests.
 
 ### Import path duality
 
@@ -113,7 +192,7 @@ Facial emotion also gets a whole-call distribution (`_face_emotion_distribution(
 ├── models/           Model weights cache (auto-downloaded)
 ├── output/           Generated JSON files, report.html, and other derived artifacts
 ├── overleaf/         Static LaTeX snapshot report (see above) — not pipeline-generated
-├── pipeline/         The six analysis scripts + shared modules
+├── pipeline/         The six analysis scripts + shared modules; planned qualification subsystem
 ├── tests/            Pytest test suite
 ├── run.py            Orchestrator
 └── requirements.txt  Python dependencies
@@ -147,6 +226,9 @@ python -m pytest tests/ -v -k "test_loads"      # single test by name
 
 # View report
 # Open output/report.html in a browser
+
+# Planned qualification subsystem
+python pipeline/07_qualification.py
 ```
 
 212 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/emotion_voice.py` (extract_voice_emotion — 10 tests: 9 mocked + 1 integration with real model, skip-guarded if cache missing), `pipeline/emotion_face.py` (extract_face_emotion — 16 tests: 13 mocked/pure unit + 2 cv2 integration + 1 skip-guarded full DeepFace integration), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio), `pipeline/03_emotion_voice.py` subprocess guards (2 tests: missing segments, missing audio), `pipeline/04_emotion_face.py` subprocess guard (1 test: missing video), `pipeline/llm_analysis.py` (run_analysis — 63 tests: 35 pure unit + 8 mocked-seam with a fake `anthropic` injected into `sys.modules` + 5 orchestration + 14 real-data tests on the actual `output/*.json` + 1 skip-guarded live Claude integration), `pipeline/05_llm_analysis.py` subprocess guards (2 tests: missing inputs, missing `ANTHROPIC_API_KEY`), `pipeline/report.py` (render_report + data-shaping helpers including the dissonance-proof pipeline, the signal glossary, and the prosody/VAD/face-distribution role comparisons, 77 tests: pure unit, no mocks needed), `pipeline/06_report.py` subprocess guards (2 tests: missing inputs, writes report.html).

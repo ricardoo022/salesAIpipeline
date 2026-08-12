@@ -34,3 +34,15 @@ Line-by-line walkthroughs of each pipeline step, written in Portuguese for the S
 | `step3-walkthrough.md` | Step 3 — Voice Emotion: audeering wav2vec2 VAD extraction, plus bugs found via statistical validation and the fixes |
 | `step4-walkthrough.md` | Step 4 — Facial Emotion: DeepFace + OpenCV frame sampling, plus bugs found running on the real video (broken opencv detector backend, 0–100 vs 0–1 scores) |
 | `step5-walkthrough.md` | Step 5 — LLM Analysis: Claude tool-use, transcript-only vs multimodal side-by-side, the killer-feature dissonance moments, plus the MAX_TOKENS truncation bug found via code review |
+
+### `Problem/`
+
+Design documents for the planned BANT evidence-extraction subsystem.
+
+| File | Description |
+|------|-------------|
+| `ARCHITECTURE.md` | Scope, responsibilities, and evidence flow |
+| `HIERARCHICAL-CHUNKING.md` | Transcript sections, bounded chunks, overlap, and source traceability |
+| `HARNESS.md` | Topic agents, validation, assembly, retries, and signal linking |
+| `FOLDER-ARCHITECTURE.md` | Planned qualification package and runtime artifacts |
+| `EPICS-AND-USER-STORIES.md` | Epics, schemas, acceptance criteria, and chunking evaluation plan |

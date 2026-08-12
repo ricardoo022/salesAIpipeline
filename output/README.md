@@ -13,6 +13,8 @@ Generated files from each pipeline step. All files here are derived outputs — 
 | `analysis.json` | `05_llm_analysis.py` | LLM output — both `transcript_only` and `multimodal` analyses |
 | `report.html` | `06_report.py` | Final self-contained report — open in any browser |
 | `audio_temp.wav` | `01_transcribe.py` | Temporary 16kHz mono WAV file, overwritten each run |
+| `qualification.json` | `07_qualification.py` (planned) | Validated BANT evidence with linked existing measurements |
+| `qualification_runs/<run_id>/` | `07_qualification.py` (planned) | Intermediate sections, chunks, validation, retries, and audit artifacts |
 
 ## transcript.json field reference
 

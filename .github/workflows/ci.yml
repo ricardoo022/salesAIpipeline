@@ -1,0 +1,41 @@
+name: Qualification CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  qualification-tests:
+    name: Qualification tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Run qualification tests
+        shell: bash
+        run: |
+          qualification_tests=(tests/qualification/unit/test_*.py tests/qualification/integration/test_*.py)
+          found_tests=false
+          for test_path in "${qualification_tests[@]}"; do
+            if [ -e "$test_path" ]; then
+              found_tests=true
+              break
+            fi
+          done
+          if [ "$found_tests" = false ]; then
+            echo "No qualification tests exist yet; skipping this job."
+            exit 0
+          fi
+          uv run --no-project --python 3.11 --with pytest pytest "${qualification_tests[@]}" -v
+
+      - name: Check documentation whitespace
+        run: git diff --check
