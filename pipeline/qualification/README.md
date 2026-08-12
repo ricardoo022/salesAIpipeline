@@ -4,17 +4,22 @@ This directory contains the backend BANT evidence-extraction subsystem.
 
 ## Current status
 
-Epic 1, US-1.1 is complete. `schemas.py` provides the immutable
-`TranscriptSegment` source boundary and `normalize_transcript()` assigns
-deterministic source IDs without modifying `output/transcript.json`.
+Epic 1, US-1.1, US-1.2, and US-1.3 are complete. `schemas.py` provides the
+immutable `TranscriptSegment` source boundary and `normalize_transcript()`
+assigns deterministic source IDs without modifying `output/transcript.json`.
 Oversized segments are split only at complete word boundaries; each piece
 retains the original `segment_id` and records its deterministic piece index and
-word range. Conversation sections and extraction chunks remain planned work.
+word range. `chunking.py`'s `create_sections()` groups normalized segments
+into chronological, deterministically overlapping `ConversationSection`s, and
+`create_chunks()` bounds each section's segments into speaker-labeled
+`ExtractionChunk`s: whole speaker turns are packed under `max_chunk_tokens`,
+oversized turns fall back to per-segment packing, and neighboring chunks
+within a section share overlap made of complete trailing turns. Each section's
+`chunk_ids` is populated with its own chunks' IDs. Chunk coverage validation
+remains planned work.
 
 Planned responsibilities:
 
-- Hierarchical transcript chunking
-- Deterministic section and chunk schemas with source traceability
 - Chunk coverage validation
 - Evaluation of candidate chunking configurations with gold question-answer cases
 - Four parallel BANT topic agents
