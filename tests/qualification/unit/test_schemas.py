@@ -1,4 +1,5 @@
 import copy
+from dataclasses import FrozenInstanceError
 
 import pytest
 
@@ -6,6 +7,8 @@ from pipeline.qualification.schemas import (
     ChunkingConfiguration,
     ConversationSection,
     ExtractionChunk,
+    ResolvedChunk,
+    TranscriptSegment,
     normalize_transcript,
 )
 
@@ -212,3 +215,80 @@ def test_extraction_chunk_carries_no_bant_label():
 
     assert not hasattr(chunk, "topic")
     assert not hasattr(chunk, "bant_field")
+
+
+def test_resolved_chunk_is_frozen():
+    seg = TranscriptSegment(
+        segment_id="seg_000001",
+        speaker="SPEAKER_00",
+        start=0.0,
+        end=1.0,
+        text="hi",
+        words=(),
+    )
+    chunk = ExtractionChunk(
+        chunk_id="chunk_000001",
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=1.0,
+        segment_ids=("seg_000001",),
+        overlap_segment_ids=(),
+        token_count=1,
+        text="SPEAKER_00 [00:00:00]: hi",
+    )
+    section = ConversationSection(
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=1.0,
+        segment_ids=("seg_000001",),
+        overlap_segment_ids=(),
+    )
+    resolved = ResolvedChunk(chunk=chunk, section=section, segments=(seg,))
+
+    with pytest.raises(FrozenInstanceError):
+        resolved.chunk = None
+
+
+def test_resolved_chunk_field_round_trip():
+    seg1 = TranscriptSegment(
+        segment_id="seg_000001",
+        speaker="SPEAKER_00",
+        start=0.0,
+        end=1.0,
+        text="hi",
+        words=(),
+    )
+    seg2 = TranscriptSegment(
+        segment_id="seg_000002",
+        speaker="SPEAKER_01",
+        start=1.0,
+        end=2.0,
+        text="hello",
+        words=(),
+    )
+    chunk = ExtractionChunk(
+        chunk_id="chunk_000001",
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=2.0,
+        segment_ids=("seg_000001", "seg_000002"),
+        overlap_segment_ids=(),
+        token_count=2,
+        text="SPEAKER_00 [00:00:00]: hi\nSPEAKER_01 [00:00:01]: hello",
+    )
+    section = ConversationSection(
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=2.0,
+        segment_ids=("seg_000001", "seg_000002"),
+        overlap_segment_ids=(),
+    )
+    resolved = ResolvedChunk(chunk=chunk, section=section, segments=(seg1, seg2))
+
+    assert resolved.chunk is chunk
+    assert resolved.section is section
+    assert resolved.segments == (seg1, seg2)

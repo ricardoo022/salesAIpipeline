@@ -201,3 +201,12 @@ class ExtractionChunk:
     overlap_segment_ids: tuple[str, ...]
     token_count: int
     text: str
+
+
+@dataclass(frozen=True)
+class ResolvedChunk:
+    """A chunk resolved to its parent section and ordered source segments."""
+
+    chunk: ExtractionChunk
+    section: ConversationSection
+    segments: tuple[TranscriptSegment, ...]
