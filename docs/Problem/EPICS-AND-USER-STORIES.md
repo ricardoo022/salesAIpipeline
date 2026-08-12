@@ -199,6 +199,13 @@ LLM chunks, and complete speaker turns for conversational overlap.
 
 ### US-1.1: Preserve Transcript Source Units
 
+**Status: Done**
+
+Implemented by `pipeline/qualification/schemas.py` and covered by unit and
+integration tests in `tests/qualification/`. The normalizer is non-destructive,
+assigns deterministic source IDs, preserves exact source fields and word
+metadata, and records word ranges for oversized pieces.
+
 **As the extraction harness,** I want every transcript segment to have a stable source identity, **so that** extracted evidence can always reference the original call.
 
 **Acceptance criteria:**

@@ -1,6 +1,15 @@
 # Qualification Subsystem
 
-This directory will contain the backend BANT evidence-extraction subsystem.
+This directory contains the backend BANT evidence-extraction subsystem.
+
+## Current status
+
+Epic 1, US-1.1 is complete. `schemas.py` provides the immutable
+`TranscriptSegment` source boundary and `normalize_transcript()` assigns
+deterministic source IDs without modifying `output/transcript.json`.
+Oversized segments are split only at complete word boundaries; each piece
+retains the original `segment_id` and records its deterministic piece index and
+word range. Conversation sections and extraction chunks remain planned work.
 
 Planned responsibilities:
 

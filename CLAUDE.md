@@ -41,7 +41,7 @@ The numbered scripts (`01_transcribe.py` etc.) are CLI entry points — they han
 - `pipeline/llm_analysis.py` — `run_analysis()` — merges the 4 upstream JSONs, calls Claude twice (transcript-only + multimodal) with forced tool-use; deterministic talk_ratio; lazy-imports anthropic
 - `pipeline/report.py` — `render_report(transcript, audio_features, voice_emotion, face_emotion, analysis, meeting_title=...)` — assembles the self-contained HTML string; pure stdlib (`json` + string building), no lazy imports needed. Data-shaping helpers (`_build_timeline_series`, `_build_comparison`, `_build_proof_examples`, `_prosody_by_role`, `_vad_by_role`, `_face_emotion_distribution`, `_compare_role_stat`, `_moment_tag`, etc.) are the testable seams. Report copy is European Portuguese, written for a non-technical sales audience (see "Signal glossary" below); the LLM's own generated text (`critical_moments`, `recommendations`) is rendered verbatim in whatever language step 5 produced it in, same treatment as transcript quotes.
 
-### BANT evidence extraction (planned)
+### BANT evidence extraction (US-1.1 complete; remaining work planned)
 
 The next backend feature is a separate qualification subsystem. It extracts Budget, Authority, Need, and Timeline evidence from an already-processed transcript and links the existing audio, voice, and facial measurements to each evidence moment. It does **not** decide whether a lead qualifies, apply company-specific KPIs, or interpret the measurements.
 
@@ -52,7 +52,7 @@ pipeline/07_qualification.py          # CLI entry point
 pipeline/qualification/
 ├── graph.py                          # harness workflow
 ├── state.py                          # run state
-├── schemas.py                        # chunks and evidence shapes
+├── schemas.py                        # immutable transcript source units (US-1.1); later chunk/evidence shapes
 ├── chunking.py                       # hierarchical transcript chunks
 ├── grounding.py                      # source and quote validation
 ├── assembly.py                       # merge and deduplicate evidence
@@ -112,6 +112,15 @@ output/qualification_runs/<run_id>/
 ```
 
 The design and user stories are documented in `docs/Problem/ARCHITECTURE.md`, `docs/Problem/HIERARCHICAL-CHUNKING.md`, `docs/Problem/HARNESS.md`, `docs/Problem/FOLDER-ARCHITECTURE.md`, and `docs/Problem/EPICS-AND-USER-STORIES.md`.
+
+US-1.1 is implemented in `pipeline/qualification/schemas.py`. The pure
+`normalize_transcript()` boundary assigns deterministic `seg_000001`-style
+source IDs, preserves speaker/timestamps/exact text/word timestamps, and does
+not modify `output/transcript.json`. Oversized segments are split only at
+complete word boundaries; pieces retain the original `segment_id` and record
+`piece_index`, `word_start`, and `word_end`. Word metadata is recursively
+immutable. Sections, extraction chunks, and coverage validation are not yet
+implemented.
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
 
@@ -231,7 +240,7 @@ python -m pytest tests/ -v -k "test_loads"      # single test by name
 python pipeline/07_qualification.py
 ```
 
-212 tests: `pipeline/audio.py` (extract_audio, 6 tests), `pipeline/transcribe.py` (transcribe_audio, 4 tests; merge_speaker_labels, 4 tests), `pipeline/diarize.py` (diarize_audio, 4 tests), `pipeline/features.py` (extract_audio_features — 17 tests: 14 mocked + 3 integration with real WAV), `pipeline/emotion_voice.py` (extract_voice_emotion — 10 tests: 9 mocked + 1 integration with real model, skip-guarded if cache missing), `pipeline/emotion_face.py` (extract_face_emotion — 16 tests: 13 mocked/pure unit + 2 cv2 integration + 1 skip-guarded full DeepFace integration), `pipeline/01_transcribe.py` subprocess guards (2 tests: missing video, missing HF_TOKEN), `pipeline/02_audio_features.py` subprocess guards (2 tests: missing transcript, missing audio), `pipeline/03_emotion_voice.py` subprocess guards (2 tests: missing segments, missing audio), `pipeline/04_emotion_face.py` subprocess guard (1 test: missing video), `pipeline/llm_analysis.py` (run_analysis — 63 tests: 35 pure unit + 8 mocked-seam with a fake `anthropic` injected into `sys.modules` + 5 orchestration + 14 real-data tests on the actual `output/*.json` + 1 skip-guarded live Claude integration), `pipeline/05_llm_analysis.py` subprocess guards (2 tests: missing inputs, missing `ANTHROPIC_API_KEY`), `pipeline/report.py` (render_report + data-shaping helpers including the dissonance-proof pipeline, the signal glossary, and the prosody/VAD/face-distribution role comparisons, 77 tests: pure unit, no mocks needed), `pipeline/06_report.py` subprocess guards (2 tests: missing inputs, writes report.html).
+218 tests: existing pipeline tests plus six qualification tests for US-1.1 in `tests/qualification/unit/` and `tests/qualification/integration/`. The qualification tests cover deterministic source IDs, exact source preservation, recursive immutability, oversized word-boundary splitting, and fixture traceability. Existing pipeline test coverage remains as previously listed below.
 
 Two real-model integration tests (`test_emotion_face.py::TestExtractFaceEmotionIntegration::test_with_real_meeting_video`, `test_emotion_voice.py::TestExtractVoiceEmotionIntegration::test_with_real_sine_tone`) segfault if run in the same process — a native library conflict between TensorFlow (DeepFace) and PyTorch (transformers) when both load real models in one pytest run, not a code bug. Deselect one when running the full suite together: `python -m pytest tests/ --deselect tests/test_emotion_face.py::TestExtractFaceEmotionIntegration::test_with_real_meeting_video`.
 
