@@ -2,7 +2,11 @@ import copy
 
 import pytest
 
-from pipeline.qualification.schemas import normalize_transcript
+from pipeline.qualification.schemas import (
+    ChunkingConfiguration,
+    ConversationSection,
+    normalize_transcript,
+)
 
 
 def test_normalize_assigns_deterministic_ids_and_preserves_source_fields():
@@ -100,3 +104,52 @@ def test_oversized_segment_without_words_fails_instead_of_cutting_text():
             max_tokens=1,
             tokenizer=lambda text: len(text.split()),
         )
+
+
+def test_chunking_configuration_defaults_match_documented_strategy():
+    config = ChunkingConfiguration()
+
+    assert config.section_target_seconds == 480.0
+    assert config.section_overlap_seconds == 30.0
+    assert config.max_chunk_tokens == 1200
+    assert config.chunk_overlap_turns == 2
+    assert config.max_overlap_tokens == 250
+    assert isinstance(config.tokenizer, str) and config.tokenizer
+
+
+def test_chunking_configuration_rejects_invalid_section_geometry():
+    with pytest.raises(ValueError, match="section_target_seconds"):
+        ChunkingConfiguration(section_target_seconds=0)
+    with pytest.raises(ValueError, match="section_overlap_seconds"):
+        ChunkingConfiguration(section_overlap_seconds=-1)
+    with pytest.raises(ValueError, match="section_overlap_seconds"):
+        ChunkingConfiguration(section_target_seconds=100, section_overlap_seconds=100)
+    with pytest.raises(ValueError, match="max_chunk_tokens"):
+        ChunkingConfiguration(max_chunk_tokens=0)
+
+
+def test_chunking_configuration_is_immutable():
+    config = ChunkingConfiguration()
+
+    with pytest.raises(AttributeError):
+        config.section_target_seconds = 60
+
+
+def test_conversation_section_records_membership_and_is_immutable():
+    section = ConversationSection(
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=8.0,
+        segment_ids=("seg_000001", "seg_000002"),
+        overlap_segment_ids=("seg_000002",),
+        chunk_ids=(),
+    )
+
+    assert section.segment_ids == ("seg_000001", "seg_000002")
+    assert section.overlap_segment_ids == ("seg_000002",)
+    assert section.chunk_ids == ()
+    assert not hasattr(section, "topic")
+    assert not hasattr(section, "bant")
+    with pytest.raises(AttributeError):
+        section.sequence = 2

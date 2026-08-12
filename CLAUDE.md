@@ -113,14 +113,19 @@ output/qualification_runs/<run_id>/
 
 The design and user stories are documented in `docs/Problem/ARCHITECTURE.md`, `docs/Problem/HIERARCHICAL-CHUNKING.md`, `docs/Problem/HARNESS.md`, `docs/Problem/FOLDER-ARCHITECTURE.md`, and `docs/Problem/EPICS-AND-USER-STORIES.md`.
 
-US-1.1 is implemented in `pipeline/qualification/schemas.py`. The pure
-`normalize_transcript()` boundary assigns deterministic `seg_000001`-style
-source IDs, preserves speaker/timestamps/exact text/word timestamps, and does
-not modify `output/transcript.json`. Oversized segments are split only at
-complete word boundaries; pieces retain the original `segment_id` and record
-`piece_index`, `word_start`, and `word_end`. Word metadata is recursively
-immutable. Sections, extraction chunks, and coverage validation are not yet
-implemented.
+US-1.1 and US-1.2 are implemented in `pipeline/qualification/schemas.py`
+(immutable `TranscriptSegment`, `ChunkingConfiguration`, and
+`ConversationSection` contracts plus the pure `normalize_transcript()`
+boundary) and `pipeline/qualification/chunking.py` (`create_sections()` —
+deterministic time-window sections striding by `target - overlap`; membership
+by segment start guarantees full coverage; empty windows are skipped and
+sections renumbered). `normalize_transcript()` assigns deterministic
+`seg_000001`-style source IDs, preserves speaker/timestamps/exact text/word
+timestamps, and does not modify `output/transcript.json`. Oversized segments
+are split only at complete word boundaries; pieces retain the original
+`segment_id` and record `piece_index`, `word_start`, and `word_end`. Word
+metadata is recursively immutable. Extraction chunks and coverage validation
+are not yet implemented.
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
 
@@ -240,7 +245,7 @@ python -m pytest tests/ -v -k "test_loads"      # single test by name
 python pipeline/07_qualification.py
 ```
 
-218 tests: existing pipeline tests plus six qualification tests for US-1.1 in `tests/qualification/unit/` and `tests/qualification/integration/`. The qualification tests cover deterministic source IDs, exact source preservation, recursive immutability, oversized word-boundary splitting, and fixture traceability. Existing pipeline test coverage remains as previously listed below.
+233 tests: existing pipeline tests plus 21 qualification tests for US-1.1 and US-1.2 in `tests/qualification/unit/` and `tests/qualification/integration/`. The qualification tests cover deterministic source IDs, exact source preservation, recursive immutability, oversized word-boundary splitting, fixture traceability, chunking configuration defaults and validation, and deterministic overlapping conversation sections with full segment coverage. Existing pipeline test coverage remains as previously listed below.
 
 Two real-model integration tests (`test_emotion_face.py::TestExtractFaceEmotionIntegration::test_with_real_meeting_video`, `test_emotion_voice.py::TestExtractVoiceEmotionIntegration::test_with_real_sine_tone`) segfault if run in the same process — a native library conflict between TensorFlow (DeepFace) and PyTorch (transformers) when both load real models in one pytest run, not a code bug. Deselect one when running the full suite together: `python -m pytest tests/ --deselect tests/test_emotion_face.py::TestExtractFaceEmotionIntegration::test_with_real_meeting_video`.
 
