@@ -129,3 +129,56 @@ def normalize_transcript(
         else:
             normalized.extend(_split_segment(segment_id, source, max_tokens, tokenizer))
     return normalized
+
+
+@dataclass(frozen=True)
+class ChunkingConfiguration:
+    """Explicit, reproducible hierarchy settings (Epic 1 schema).
+
+    Time organizes sections, tokens bound LLM chunks, and complete speaker
+    turns define chunk overlap. ``tokenizer`` records the identity of the
+    tokenizer used for token counting (the default is the whitespace word
+    counter used by ``normalize_transcript``).
+    """
+
+    section_target_seconds: float = 480.0
+    section_overlap_seconds: float = 30.0
+    max_chunk_tokens: int = 1200
+    chunk_overlap_turns: int = 2
+    max_overlap_tokens: int = 250
+    tokenizer: str = "whitespace-word-count-v1"
+
+    def __post_init__(self) -> None:
+        if self.section_target_seconds <= 0:
+            raise ValueError("section_target_seconds must be greater than zero")
+        if self.section_overlap_seconds < 0:
+            raise ValueError("section_overlap_seconds must not be negative")
+        if self.section_overlap_seconds >= self.section_target_seconds:
+            raise ValueError(
+                "section_overlap_seconds must be smaller than section_target_seconds"
+            )
+        if self.max_chunk_tokens <= 0:
+            raise ValueError("max_chunk_tokens must be greater than zero")
+        if self.chunk_overlap_turns < 0:
+            raise ValueError("chunk_overlap_turns must not be negative")
+        if self.max_overlap_tokens < 0:
+            raise ValueError("max_overlap_tokens must not be negative")
+        if not isinstance(self.tokenizer, str) or not self.tokenizer:
+            raise ValueError("tokenizer must be a non-empty tokenizer identity")
+
+
+@dataclass(frozen=True)
+class ConversationSection:
+    """Chronological parent container for source segments (Epic 1 schema).
+
+    Organizational only: sections carry no BANT label and no transcript text.
+    ``chunk_ids`` stays empty until extraction chunks exist (US-1.3).
+    """
+
+    section_id: str
+    sequence: int
+    start: float
+    end: float
+    segment_ids: tuple[str, ...]
+    overlap_segment_ids: tuple[str, ...]
+    chunk_ids: tuple[str, ...] = ()

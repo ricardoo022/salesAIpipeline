@@ -220,6 +220,15 @@ metadata, and records word ranges for oversized pieces.
 
 ### US-1.2: Create Conversation Sections
 
+**Status: Done**
+
+Implemented by `pipeline/qualification/chunking.py` (`create_sections`) and the
+`ChunkingConfiguration` / `ConversationSection` schemas in
+`pipeline/qualification/schemas.py`, covered by unit and integration tests in
+`tests/qualification/`. Section windows are deterministic, overlap by exactly
+the configured `section_overlap_seconds`, and every source segment belongs to
+at least one section.
+
 **As the extraction harness,** I want the transcript grouped into chronological conversation sections, **so that** long calls can be processed with broader context.
 
 **Acceptance criteria:**
