@@ -270,6 +270,80 @@ def test_overlap_always_includes_nearest_turn_even_if_it_exceeds_max_overlap_tok
     assert chunks[1].overlap_segment_ids == ("seg_000001", "seg_000002")
 
 
+def test_overlap_after_oversized_turn_fallback_uses_immediately_preceding_fragment():
+    # SPEAKER_00 turn (2 segs) -> oversized SPEAKER_01 turn (4 segs, forced
+    # through _pack_segments_individually) -> SPEAKER_00 turn (2 segs).
+    speakers = [
+        "SPEAKER_00", "SPEAKER_00",
+        "SPEAKER_01", "SPEAKER_01", "SPEAKER_01", "SPEAKER_01",
+        "SPEAKER_00", "SPEAKER_00",
+    ]
+    segments = make_segments(8, speakers=speakers, text=["hi"] * 8)
+    section = make_section(segments)
+    # Each rendered line is 3 tokens ("SPEAKER_XX [ts]: hi"), so a single
+    # segment (3) and a pair of segments (6) both fit under max_chunk_tokens,
+    # but the whole 4-segment middle turn (12) does not: it falls back to
+    # _pack_segments_individually, which packs it into two 2-segment groups.
+    # chunk_overlap_turns=2 deliberately asks for more turns of overlap than
+    # a fallback-produced chunk can ever supply (its own_turns is always a
+    # single-element list), to pin down the degrade-to-1 behavior.
+    config = ChunkingConfiguration(
+        max_chunk_tokens=6, chunk_overlap_turns=2, max_overlap_tokens=1000
+    )
+
+    _, chunks = create_chunks(segments, [section], config)
+
+    assert len(chunks) == 4
+    # Each chunk's own (non-overlap) segments, i.e. segment_ids with the
+    # overlap prefix stripped off.
+    own_segment_ids = [
+        chunk.segment_ids[len(chunk.overlap_segment_ids):] for chunk in chunks
+    ]
+    assert own_segment_ids == [
+        ("seg_000001", "seg_000002"),
+        ("seg_000003", "seg_000004"),
+        ("seg_000005", "seg_000006"),
+        ("seg_000007", "seg_000008"),
+    ]
+    # First chunk of the section has no predecessor.
+    assert chunks[0].overlap_segment_ids == ()
+    # Chunk following the first fallback fragment overlaps with the whole
+    # normal turn that preceded the oversized turn.
+    assert chunks[1].overlap_segment_ids == ("seg_000001", "seg_000002")
+    # Chunk following the second fallback fragment overlaps with exactly the
+    # immediately preceding fallback fragment -- not the two segments before
+    # it and not the pre-fallback turn -- even though chunk_overlap_turns=2
+    # was requested. A fallback-produced chunk's own_turns is always a
+    # single-element list, so only one "turn" is ever available to draw from.
+    assert chunks[2].overlap_segment_ids == ("seg_000003", "seg_000004")
+    # The normal turn immediately after the fallback run overlaps with the
+    # last fallback fragment, in full.
+    assert chunks[3].overlap_segment_ids == ("seg_000005", "seg_000006")
+
+
+def test_overlap_after_fallback_still_includes_nearest_fragment_below_max_overlap_tokens():
+    speakers = [
+        "SPEAKER_00", "SPEAKER_00",
+        "SPEAKER_01", "SPEAKER_01", "SPEAKER_01", "SPEAKER_01",
+        "SPEAKER_00", "SPEAKER_00",
+    ]
+    segments = make_segments(8, speakers=speakers, text=["hi"] * 8)
+    section = make_section(segments)
+    # max_overlap_tokens=1 is far smaller than any single fallback fragment
+    # (6 tokens each): the "nearest turn always included in full" exception
+    # must still apply when the nearest turn is a fallback fragment.
+    config = ChunkingConfiguration(
+        max_chunk_tokens=6, chunk_overlap_turns=1, max_overlap_tokens=1
+    )
+
+    _, chunks = create_chunks(segments, [section], config)
+
+    assert len(chunks) == 4
+    assert chunks[1].overlap_segment_ids == ("seg_000001", "seg_000002")
+    assert chunks[2].overlap_segment_ids == ("seg_000003", "seg_000004")
+    assert chunks[3].overlap_segment_ids == ("seg_000005", "seg_000006")
+
+
 def test_normal_segments_are_never_cut_for_overlap():
     segments = make_segments(6)
     section = make_section(segments)
