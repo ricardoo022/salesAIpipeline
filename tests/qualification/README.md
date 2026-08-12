@@ -1,20 +1,20 @@
 # Qualification Tests
 
 Qualification tests are isolated from the existing pipeline tests for steps
-`01` through `06`. 45 tests currently pass, covering US-1.1 (transcript
+`01` through `06`. 59 tests currently pass, covering US-1.1 (transcript
 source normalization), US-1.2 (conversation sections), US-1.3 (bounded
-extraction chunks), and the `ResolvedChunk` schema (US-1.4) — deterministic
+extraction chunks), and US-1.4 (chunk hierarchy resolution) — deterministic
 source IDs, exact field and word preservation, non-destructive normalization,
 recursive immutability, oversized word-boundary pieces, deterministic
 overlapping sections with full segment coverage, turn-preserving chunk
 packing (including the segment-level fallback for oversized turns),
-turn-based chunk overlap, and fixture-based integration traceability from raw
-transcript through sections to chunks. 4 more integration tests target the
-US-1.4 hierarchy-resolution API (`resolve_chunk`, `reconstruct_chunk_text`,
-`iter_chunks_for_processing`, `ChunkHierarchyError`) and are written against
-that API's planned signatures ahead of its implementation landing in
-`chunking.py` — they currently fail collection with an `ImportError`, the
-expected state until that work merges.
+turn-based chunk overlap, fixture-based integration traceability from raw
+transcript through sections to chunks, and resolving a chunk back to its
+parent section and source segments (`resolve_chunk`, `reconstruct_chunk_text`,
+`iter_chunks_for_processing`, `ChunkHierarchyError`) — including every
+failure mode raising loudly instead of dropping data, and byte-for-byte text
+reconstruction over both the fixture and a synthetic multi-section/overlap
+transcript.
 
 ## Unit tests
 
