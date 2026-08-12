@@ -182,3 +182,22 @@ class ConversationSection:
     segment_ids: tuple[str, ...]
     overlap_segment_ids: tuple[str, ...]
     chunk_ids: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ExtractionChunk:
+    """Bounded, speaker-labeled text chunk for LLM extraction (US-1.3 schema).
+
+    Organizational only: chunks carry no BANT label. Text is rendered from
+    original source segments with speaker labels and timestamps.
+    """
+
+    chunk_id: str
+    section_id: str
+    sequence: int
+    start: float
+    end: float
+    segment_ids: tuple[str, ...]
+    overlap_segment_ids: tuple[str, ...]
+    token_count: int
+    text: str

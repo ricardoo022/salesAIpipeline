@@ -5,6 +5,7 @@ import pytest
 from pipeline.qualification.schemas import (
     ChunkingConfiguration,
     ConversationSection,
+    ExtractionChunk,
     normalize_transcript,
 )
 
@@ -153,3 +154,61 @@ def test_conversation_section_records_membership_and_is_immutable():
     assert not hasattr(section, "bant")
     with pytest.raises(AttributeError):
         section.sequence = 2
+
+
+def test_extraction_chunk_records_all_fields():
+    chunk = ExtractionChunk(
+        chunk_id="chunk_000001",
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=2.5,
+        segment_ids=("seg_000001", "seg_000002"),
+        overlap_segment_ids=(),
+        token_count=8,
+        text="SPEAKER_00 [00:00:00]: hi",
+    )
+
+    assert chunk.chunk_id == "chunk_000001"
+    assert chunk.section_id == "section_000001"
+    assert chunk.sequence == 1
+    assert chunk.start == 0.0
+    assert chunk.end == 2.5
+    assert chunk.segment_ids == ("seg_000001", "seg_000002")
+    assert chunk.overlap_segment_ids == ()
+    assert chunk.token_count == 8
+    assert chunk.text == "SPEAKER_00 [00:00:00]: hi"
+
+
+def test_extraction_chunk_is_immutable():
+    chunk = ExtractionChunk(
+        chunk_id="chunk_000001",
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=2.5,
+        segment_ids=("seg_000001", "seg_000002"),
+        overlap_segment_ids=(),
+        token_count=8,
+        text="SPEAKER_00 [00:00:00]: hi",
+    )
+
+    with pytest.raises(AttributeError):
+        chunk.sequence = 2
+
+
+def test_extraction_chunk_carries_no_bant_label():
+    chunk = ExtractionChunk(
+        chunk_id="chunk_000001",
+        section_id="section_000001",
+        sequence=1,
+        start=0.0,
+        end=2.5,
+        segment_ids=("seg_000001", "seg_000002"),
+        overlap_segment_ids=(),
+        token_count=8,
+        text="SPEAKER_00 [00:00:00]: hi",
+    )
+
+    assert not hasattr(chunk, "topic")
+    assert not hasattr(chunk, "bant_field")
