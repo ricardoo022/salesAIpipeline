@@ -8,9 +8,26 @@ from .schemas import (
     ChunkingConfiguration,
     ConversationSection,
     ExtractionChunk,
+    ResolvedChunk,
     TranscriptSegment,
     _count_words,
 )
+
+
+class ChunkHierarchyError(ValueError):
+    """Raised when a chunk cannot be resolved to a consistent parent section
+    and source segments.
+
+    ``resolve_chunk`` re-derives a chunk's full context (its section and the
+    ordered ``TranscriptSegment`` objects backing its text) purely from IDs,
+    so it can be called independently of the run that produced the chunk
+    (e.g. from a later qualification stage reading persisted run artifacts).
+    This error means the ID references it was given don't line up: a chunk,
+    section, or segment ID doesn't exist, or the parent/child links between
+    them are inconsistent. Any of these indicates corrupted or mismatched
+    inputs rather than a normal domain condition, so callers should treat it
+    as a hard failure, not something to catch and route around.
+    """
 
 
 def create_sections(
@@ -221,19 +238,26 @@ def _build_section_chunks(
     return chunks, counter
 
 
-def _segments_for_section(
-    section: ConversationSection,
+def _resolve_segment_ids(
+    segment_ids: tuple[str, ...],
     by_id: dict[str, list[TranscriptSegment]],
 ) -> list[TranscriptSegment]:
     occurrence: dict[str, int] = {}
     result: list[TranscriptSegment] = []
-    for segment_id in section.segment_ids:
+    for segment_id in segment_ids:
         index = occurrence.get(segment_id, 0)
         candidates = by_id.get(segment_id, [])
         if index < len(candidates):
             result.append(candidates[index])
             occurrence[segment_id] = index + 1
     return result
+
+
+def _segments_for_section(
+    section: ConversationSection,
+    by_id: dict[str, list[TranscriptSegment]],
+) -> list[TranscriptSegment]:
+    return _resolve_segment_ids(section.segment_ids, by_id)
 
 
 def create_chunks(
@@ -285,3 +309,70 @@ def create_chunks(
         )
 
     return updated_sections, all_chunks
+
+
+def resolve_chunk(
+    chunk_id: str,
+    chunks: list[ExtractionChunk] | tuple[ExtractionChunk, ...],
+    sections: list[ConversationSection] | tuple[ConversationSection, ...],
+    segments: list[TranscriptSegment] | tuple[TranscriptSegment, ...],
+) -> ResolvedChunk:
+    """Resolve a chunk ID back to its parent section and ordered source
+    segments, purely from IDs.
+
+    Raises ``ChunkHierarchyError`` if the chunk ID is unknown, its parent
+    section is missing, the parent section doesn't list it back among its
+    ``chunk_ids``, or its ``segment_ids`` can't be fully resolved against
+    ``segments`` (segment_id absent, or an oversized-piece occurrence index
+    exhausted).
+    """
+    chunk = next((c for c in chunks if c.chunk_id == chunk_id), None)
+    if chunk is None:
+        raise ChunkHierarchyError(f"No chunk found with chunk_id {chunk_id!r}")
+
+    section = next((s for s in sections if s.section_id == chunk.section_id), None)
+    if section is None:
+        raise ChunkHierarchyError(
+            f"Chunk {chunk_id!r} references section_id {chunk.section_id!r}, "
+            "which does not exist"
+        )
+
+    if chunk_id not in section.chunk_ids:
+        raise ChunkHierarchyError(
+            f"Section {section.section_id!r} does not list chunk {chunk_id!r} "
+            "among its chunk_ids"
+        )
+
+    by_id: dict[str, list[TranscriptSegment]] = {}
+    for segment in segments:
+        by_id.setdefault(segment.segment_id, []).append(segment)
+
+    resolved = _resolve_segment_ids(chunk.segment_ids, by_id)
+    if len(resolved) != len(chunk.segment_ids):
+        raise ChunkHierarchyError(
+            f"Chunk {chunk_id!r} expects {len(chunk.segment_ids)} segments "
+            f"but only {len(resolved)} could be resolved from the given segments"
+        )
+
+    return ResolvedChunk(chunk=chunk, section=section, segments=tuple(resolved))
+
+
+def reconstruct_chunk_text(resolved: ResolvedChunk) -> str:
+    """Re-render a resolved chunk's text from its source segments.
+
+    Reproduces ``ExtractionChunk.text`` byte-for-byte, since
+    ``resolved.segments`` are in the exact order they were originally
+    rendered in.
+    """
+    return _render(list(resolved.segments))
+
+
+def iter_chunks_for_processing(
+    chunks: list[ExtractionChunk] | tuple[ExtractionChunk, ...],
+) -> tuple[ExtractionChunk, ...]:
+    """Return chunks as an immutable tuple, in the given order.
+
+    Deliberately trivial: every chunk is processed, so there is no
+    scoring/filtering to do here.
+    """
+    return tuple(chunks)
