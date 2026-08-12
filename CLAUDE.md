@@ -129,6 +129,14 @@ preserves speaker/timestamps/exact text/word timestamps, and does not modify
 `output/transcript.json`. Oversized segments are split only at complete word
 boundaries; pieces retain the original `segment_id` and record `piece_index`,
 `word_start`, and `word_end`. Word metadata is recursively immutable.
+US-1.4 adds a `ResolvedChunk` contract to `schemas.py` (frozen `chunk`/
+`section`/`segments` triple) and a resolution API to `chunking.py`:
+`resolve_chunk()` resolves one `ExtractionChunk` to its parent
+`ConversationSection` and ordered source `TranscriptSegment`s, raising
+`ChunkHierarchyError` on any broken reference; `reconstruct_chunk_text()`
+rebuilds a chunk's text from those resolved segments and must equal the
+chunk's own `text` byte-for-byte; `iter_chunks_for_processing()` returns
+every chunk unfiltered, in original order.
 Coverage validation (`CoverageRecord`, US-1.5) is not yet implemented.
 
 Tests import the modules directly with mocks; they never call the numbered scripts (except the subprocess tests for the CLI guards). New logic for each step should follow this pattern.
@@ -249,7 +257,7 @@ python -m pytest tests/ -v -k "test_loads"      # single test by name
 python pipeline/07_qualification.py
 ```
 
-255 tests: existing pipeline tests plus 43 qualification tests for US-1.1, US-1.2, and US-1.3 in `tests/qualification/unit/` and `tests/qualification/integration/`. The qualification tests cover deterministic source IDs, exact source preservation, recursive immutability, oversized word-boundary splitting, fixture traceability, chunking configuration defaults and validation, deterministic overlapping conversation sections with full segment coverage, and bounded extraction chunks — turn-preserving packing, the segment-level fallback for oversized turns, turn-based overlap (including overlap immediately after a fallback-produced chunk), deterministic global chunk IDs with per-section sequencing, and end-to-end coverage from raw transcript through sections to chunks. Existing pipeline test coverage remains as previously listed below.
+271 tests: existing pipeline tests plus 59 qualification tests for US-1.1 through US-1.4 in `tests/qualification/unit/` and `tests/qualification/integration/`. The qualification tests cover deterministic source IDs, exact source preservation, recursive immutability, oversized word-boundary splitting, fixture traceability, chunking configuration defaults and validation, deterministic overlapping conversation sections with full segment coverage, bounded extraction chunks — turn-preserving packing, the segment-level fallback for oversized turns, turn-based overlap (including overlap immediately after a fallback-produced chunk), deterministic global chunk IDs with per-section sequencing, and end-to-end coverage from raw transcript through sections to chunks — and chunk hierarchy resolution (US-1.4): resolving a chunk to its parent section and ordered source segments, every `ChunkHierarchyError` failure mode (unknown chunk ID, missing parent section, broken parent-child link, unresolvable/miscounted segments including the oversized-piece occurrence case), byte-for-byte text reconstruction from resolved segments (including overlap chunks), and unfiltered full-coverage chunk iteration. Existing pipeline test coverage remains as previously listed below.
 
 Two real-model integration tests (`test_emotion_face.py::TestExtractFaceEmotionIntegration::test_with_real_meeting_video`, `test_emotion_voice.py::TestExtractVoiceEmotionIntegration::test_with_real_sine_tone`) segfault if run in the same process — a native library conflict between TensorFlow (DeepFace) and PyTorch (transformers) when both load real models in one pytest run, not a code bug. Deselect one when running the full suite together: `python -m pytest tests/ --deselect tests/test_emotion_face.py::TestExtractFaceEmotionIntegration::test_with_real_meeting_video`.
 

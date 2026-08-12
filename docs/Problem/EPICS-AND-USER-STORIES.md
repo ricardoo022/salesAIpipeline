@@ -274,6 +274,26 @@ section's `chunk_ids` is populated from the chunks generated for it.
 
 ### US-1.4: Support Strategic Chunking Infrastructure
 
+**Status: Done**
+
+Implemented by `pipeline/qualification/chunking.py` (`resolve_chunk`,
+`reconstruct_chunk_text`, `iter_chunks_for_processing`,
+`ChunkHierarchyError`) and the `ResolvedChunk` schema in
+`pipeline/qualification/schemas.py`, covered by unit and integration tests
+in `tests/qualification/`. Sections and chunks were already fully linked by
+US-1.2/US-1.3 (`ConversationSection.chunk_ids`, `ExtractionChunk.section_id`
+/`segment_ids`); this story adds the resolution API on top: `resolve_chunk`
+walks a `chunk_id` to its parent `ConversationSection` and ordered source
+`TranscriptSegment`s purely from IDs, raising `ChunkHierarchyError` — never
+returning `None` or a partial result — for an unknown chunk ID, a missing
+parent section, a section that doesn't list the chunk back among its
+`chunk_ids`, or a segment-resolution count mismatch. `reconstruct_chunk_text`
+re-renders a resolved chunk's text from its source segments and reproduces
+`ExtractionChunk.text` byte-for-byte, including for chunks with overlap.
+`iter_chunks_for_processing` returns every chunk unfiltered and in order,
+with no scoring or filtering parameters — the concrete implementation of
+"no vector search to select which chunks are processed."
+
 **As the extraction harness,** I want parent sections and child extraction chunks, **so that** the transcript hierarchy remains traceable from broad context to exact evidence.
 
 **Acceptance criteria:**

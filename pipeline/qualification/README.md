@@ -4,7 +4,7 @@ This directory contains the backend BANT evidence-extraction subsystem.
 
 ## Current status
 
-Epic 1, US-1.1, US-1.2, and US-1.3 are complete. `schemas.py` provides the
+Epic 1, US-1.1 through US-1.4 are complete. `schemas.py` provides the
 immutable `TranscriptSegment` source boundary and `normalize_transcript()`
 assigns deterministic source IDs without modifying `output/transcript.json`.
 Oversized segments are split only at complete word boundaries; each piece
@@ -15,8 +15,23 @@ into chronological, deterministically overlapping `ConversationSection`s, and
 `ExtractionChunk`s: whole speaker turns are packed under `max_chunk_tokens`,
 oversized turns fall back to per-segment packing, and neighboring chunks
 within a section share overlap made of complete trailing turns. Each section's
-`chunk_ids` is populated with its own chunks' IDs. Chunk coverage validation
-remains planned work.
+`chunk_ids` is populated with its own chunks' IDs.
+
+US-1.4 adds a chunk-hierarchy resolution API to `chunking.py`:
+`resolve_chunk(chunk_id, chunks, sections, segments)` resolves one
+`ExtractionChunk` back to its parent `ConversationSection` and the ordered
+source `TranscriptSegment`s it was built from, returning a `ResolvedChunk`
+(the frozen `chunk`/`section`/`segments` dataclass added to `schemas.py`),
+and raises `ChunkHierarchyError` on any broken or missing reference — an
+unknown `chunk_id`, a missing parent section, a section whose `chunk_ids`
+does not list the chunk, or a resolved segment count that does not match
+the chunk's `segment_ids`. `reconstruct_chunk_text()` rebuilds a chunk's
+rendered text purely from `resolved.segments` and equals the chunk's own
+`text` byte-for-byte for any chunk `create_chunks` produces, including
+chunks with overlap. `iter_chunks_for_processing()` returns every chunk
+unfiltered, in original order, making explicit that Epic 1 processes the
+full chunk set rather than a retrieved subset. Chunk coverage validation
+(`CoverageRecord`, US-1.5) remains planned work.
 
 Planned responsibilities:
 
