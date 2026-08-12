@@ -1,0 +1,26 @@
+[
+  {
+    "speaker": "SPEAKER_00",
+    "start": 0.0,
+    "end": 1.2,
+    "text": "Who approves this internally?",
+    "words": [
+      {"word": "Who", "start": 0.0, "end": 0.3},
+      {"word": "approves", "start": 0.3, "end": 0.8},
+      {"word": "this", "start": 0.8, "end": 1.0},
+      {"word": "internally?", "start": 1.0, "end": 1.2}
+    ]
+  },
+  {
+    "speaker": "SPEAKER_01",
+    "start": 1.3,
+    "end": 2.5,
+    "text": "Our VP of Finance.",
+    "words": [
+      {"word": "Our", "start": 1.3, "end": 1.5},
+      {"word": "VP", "start": 1.5, "end": 1.8},
+      {"word": "of", "start": 1.8, "end": 2.0},
+      {"word": "Finance.", "start": 2.0, "end": 2.5}
+    ]
+  }
+]

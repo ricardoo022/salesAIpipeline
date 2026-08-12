@@ -35,7 +35,7 @@ jobs:
             echo "No qualification tests exist yet; skipping this job."
             exit 0
           fi
-          uv run --no-project --python 3.11 --with pytest pytest "${qualification_tests[@]}" -v
+          PYTHONPATH=. uv run --no-project --python 3.11 --with pytest pytest "${qualification_tests[@]}" -v
 
       - name: Check documentation whitespace
         run: git diff --check
