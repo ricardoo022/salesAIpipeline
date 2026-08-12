@@ -47,28 +47,28 @@ input/meeting.mp4
 
 ---
 
-## Planned BANT Evidence Extraction
+## BANT Evidence Extraction (Qualification Subsystem)
 
-The planned qualification subsystem runs after the six analysis steps. It
-extracts Budget, Authority, Need, and Timeline evidence from the existing
-transcript and links the existing audio, voice, and facial measurements. It
-does not decide whether a lead qualifies and does not rerun signal analysis.
+The qualification subsystem runs after the six analysis steps. It extracts
+Budget, Authority, Need, and Timeline evidence from the existing transcript
+and links the existing audio, voice, and facial measurements. It does not
+decide whether a lead qualifies and does not rerun signal analysis.
 
 Epic 1 uses deterministic, custom Python chunking rather than vector search:
 
 ```text
 transcript segments
-  -> chronological sections
-  -> bounded overlapping chunks
-  -> four topic agents
-  -> grounded BANT evidence
+  -> chronological sections            (done, US-1.2)
+  -> bounded overlapping chunks        (done, US-1.3)
+  -> four topic agents                 (planned)
+  -> grounded BANT evidence            (planned)
 ```
 
 Chunks contain rendered speaker-labeled text for the LLM plus stable source
 segment IDs for traceability. Sections use approximate time windows, chunks use
 a token limit, and overlap keeps complete speaker turns. Candidate
-configurations are compared with manually reviewed question-answer cases
-before selecting a strategy.
+configurations will be compared with manually reviewed question-answer cases
+before selecting a strategy (planned, US-1.7).
 
 See `docs/Problem/EPICS-AND-USER-STORIES.md` for the schemas, acceptance
 criteria, and evaluation plan.
@@ -108,9 +108,8 @@ python -m pytest tests/ -v
 ```
 
 Pull requests also run `.github/workflows/ci.yml`. The workflow uses `uv` and
-runs only tests under `tests/qualification/`, including unit and future
-qualification integration tests. It does not run the real model pipeline
-behind steps `01` through `06`.
+runs only tests under `tests/qualification/` (unit and integration). It does
+not run the real model pipeline behind steps `01` through `06`.
 
 ---
 

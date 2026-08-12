@@ -37,12 +37,15 @@ Line-by-line walkthroughs of each pipeline step, written in Portuguese for the S
 
 ### `Problem/`
 
-Design documents for the planned BANT evidence-extraction subsystem.
+Design documents for the BANT evidence-extraction subsystem. Epic 1's
+hierarchical chunking (transcript sections and bounded extraction chunks,
+US-1.1–US-1.3) is implemented in `pipeline/qualification/`; the topic-agent
+harness and later epics remain planned.
 
 | File | Description |
 |------|-------------|
 | `ARCHITECTURE.md` | Scope, responsibilities, and evidence flow |
-| `HIERARCHICAL-CHUNKING.md` | Transcript sections, bounded chunks, overlap, and source traceability |
-| `HARNESS.md` | Topic agents, validation, assembly, retries, and signal linking |
-| `FOLDER-ARCHITECTURE.md` | Planned qualification package and runtime artifacts |
+| `HIERARCHICAL-CHUNKING.md` | Transcript sections, bounded chunks, overlap, and source traceability (implemented, US-1.1–US-1.3) |
+| `HARNESS.md` | Topic agents, validation, assembly, retries, and signal linking (planned) |
+| `FOLDER-ARCHITECTURE.md` | Qualification package and runtime artifacts |
 | `EPICS-AND-USER-STORIES.md` | Epics, schemas, acceptance criteria, and chunking evaluation plan |

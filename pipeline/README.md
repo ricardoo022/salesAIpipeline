@@ -83,19 +83,25 @@ WhisperX and pyannote run **in parallel on the same WAV** — WhisperX answers *
 >
 > **Lazy import:** `anthropic` is imported *inside* `_call_claude()`, not at module level — mirroring the pyannote/cv2-deepface pattern. This keeps the module import instant and lets the 63 unit tests run without the `anthropic` SDK installed (they inject a fake into `sys.modules["anthropic"]` and clean it up in `finally` blocks).
 
-## Planned qualification subsystem
+## Qualification subsystem
 
-The future `qualification/` package will consume the existing JSON outputs
-without rerunning transcription or signal extraction. Its first capability is
-strategic hierarchical chunking:
+The `qualification/` package (see `pipeline/qualification/README.md`) consumes
+the existing JSON outputs without rerunning transcription or signal
+extraction. Its hierarchical chunking layer is implemented through US-1.3:
 
-- `TranscriptSegment` preserves one original speaker utterance and its word timestamps.
-- `ConversationSection` groups chronological segments, usually from both speakers.
-- `ExtractionChunk` renders speaker-labeled text for the LLM and retains source IDs.
-- `CoverageRecord` proves that no transcript segment was omitted.
-- `ChunkingConfiguration` records time windows, token limits, turn overlap, and tokenizer identity.
+- `TranscriptSegment` preserves one original speaker utterance and its word
+  timestamps (US-1.1, `normalize_transcript()`).
+- `ConversationSection` groups chronological segments, usually from both
+  speakers (US-1.2, `create_sections()`).
+- `ExtractionChunk` renders speaker-labeled text for the LLM and retains
+  source IDs (US-1.3, `create_chunks()`).
+- `ChunkingConfiguration` records time windows, token limits, turn overlap,
+  and tokenizer identity — implemented alongside the schemas above.
+- `CoverageRecord` (proving that no transcript segment was omitted) remains
+  planned work (US-1.5).
 
 The chunker uses custom deterministic Python logic. It does not use vector
 search to select chunks because every chunk must be processed for complete
 BANT coverage. Chunking strategies are evaluated with gold question-answer
-cases and required source segment IDs before a configuration is selected.
+cases and required source segment IDs before a configuration is selected
+(planned, US-1.7).
